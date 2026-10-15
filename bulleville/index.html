@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffe9f0">
+<title>Bulleville</title>
+<style>
+  :root {
+    --fond: #fff7ef;
+    --rose: #ffc8d9;
+    --rose-fonce: #f27ea3;
+    --bleu: #bfe3ff;
+    --bleu-fonce: #5aa9e6;
+    --jaune: #ffe9a8;
+    --orange-fonce: #f5a142;
+    --vert: #c9f2d6;
+    --violet: #e3d4ff;
+    --texte: #4a3b52;
+    --texte-doux: #8a7a92;
+    --carte: #ffffff;
+    --ombre: 0 6px 0 rgba(74, 59, 82, .08), 0 10px 24px rgba(74, 59, 82, .10);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; }
+  body {
+    background: var(--fond);
+    background-image:
+      radial-gradient(circle at 10% 8%, #ffe1ec 0 70px, transparent 71px),
+      radial-gradient(circle at 92% 22%, #dff0ff 0 90px, transparent 91px),
+      radial-gradient(circle at 15% 70%, #fff1c4 0 60px, transparent 61px),
+      radial-gradient(circle at 88% 88%, #e9e0ff 0 80px, transparent 81px);
+    background-attachment: fixed;
+    color: var(--texte);
+    font-family: ui-rounded, "SF Pro Rounded", "Nunito", "Varela Round", "Trebuchet MS", system-ui, sans-serif;
+    font-size: 18px;
+    min-height: 100vh;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  button { font: inherit; color: inherit; border: 0; cursor: pointer; touch-action: manipulation; }
+  .page { max-width: 560px; margin: 0 auto; padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom)); }
+
+  /* ---------- En-tête ---------- */
+  header { text-align: center; margin: 8px 0 18px; }
+  .logo { font-size: 40px; font-weight: 900; letter-spacing: 1px; margin: 0; color: var(--rose-fonce);
+          text-shadow: 3px 3px 0 #fff, 5px 5px 0 var(--bleu); }
+  .logo .bulle { display: inline-block; width: .55em; height: .55em; border-radius: 50%; margin: 0 2px;
+                 background: radial-gradient(circle at 35% 35%, #fff 0 18%, var(--bleu) 19%); vertical-align: middle;
+                 animation: flotte 3s ease-in-out infinite; }
+  .sous-titre { margin: 4px 0 0; color: var(--texte-doux); font-size: 16px; }
+
+  /* ---------- Village (liste des habitants) ---------- */
+  .village { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .carte-perso {
+    background: var(--carte); border-radius: 28px; padding: 14px 10px 12px; box-shadow: var(--ombre);
+    display: flex; flex-direction: column; align-items: center; gap: 6px; position: relative;
+    transition: transform .12s;
+  }
+  .carte-perso:active { transform: scale(.96); }
+  .carte-perso .avatar { font-size: 15px; }
+  .carte-perso .nom { font-weight: 800; font-size: 19px; }
+  .mini-barres { width: 100%; display: grid; gap: 5px; padding: 0 4px; }
+  .alerte { position: absolute; top: 8px; right: 10px; font-size: 22px; animation: saute 1s ease-in-out infinite; }
+
+  /* ---------- Avatar : corps dessiné + visage rond ---------- */
+  .avatar { position: relative; width: 6em; height: 8.6em; animation: respire 2.6s ease-in-out infinite; }
+  .avatar .corps { position: absolute; left: 0; top: 3.7em; width: 6em; height: 4.9em; }
+  .avatar .tete {
+    position: absolute; left: 1.15em; top: .3em; width: 3.7em; height: 3.7em; border-radius: 50%;
+    background: #fff; border: .22em solid #fff; box-shadow: 0 .15em .4em rgba(74,59,82,.18);
+    overflow: hidden; display: flex; align-items: center; justify-content: center; font-size: 1em;
+  }
+  .avatar .tete img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .avatar .tete .emoji { font-size: 2.6em; line-height: 1; }
+  .avatar .accessoire { position: absolute; left: 50%; top: -.55em; transform: translateX(-50%) rotate(-8deg); font-size: 1.7em; line-height: 1; }
+  .avatar .humeur { position: absolute; right: -.1em; top: 2.6em; font-size: 1.3em; background: #fff; border-radius: 50%;
+                    width: 1.5em; height: 1.5em; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(0,0,0,.12); }
+  .avatar.saute { animation: hop .5s ease-out; }
+  .avatar.dort { animation: berce 2s ease-in-out infinite; }
+  .zzz { position: absolute; right: -.4em; top: -.4em; font-size: 1.4em; animation: zzz 1.6s ease-in-out infinite; pointer-events: none; }
+
+  /* ---------- Barres de besoins ---------- */
+  .barre { display: grid; grid-template-columns: 1.6em 1fr; align-items: center; gap: 6px; }
+  .barre .icone { font-size: 1.05em; text-align: center; }
+  .barre .jauge { height: 12px; background: #f3ecf4; border-radius: 99px; overflow: hidden; }
+  .barre .rempli { height: 100%; border-radius: 99px; transition: width .6s ease; }
+  .barre.bas .rempli { animation: clignote 1s ease-in-out infinite; }
+  .rempli.faim { background: linear-gradient(90deg, #ffc98a, var(--orange-fonce)); }
+  .rempli.energie { background: linear-gradient(90deg, #a6d8ff, var(--bleu-fonce)); }
+  .rempli.humeur { background: linear-gradient(90deg, #ffb3cb, var(--rose-fonce)); }
+  .grandes-barres { display: grid; gap: 12px; background: var(--carte); border-radius: 24px; padding: 16px; box-shadow: var(--ombre); }
+  .grandes-barres .barre { grid-template-columns: 2em 6.5em 1fr; font-weight: 700; }
+  .grandes-barres .jauge { height: 18px; }
+
+  /* ---------- Fiche d'un habitant ---------- */
+  .fiche { display: flex; flex-direction: column; gap: 16px; }
+  .barre-haut { display: flex; align-items: center; gap: 10px; }
+  .bouton-retour { background: var(--carte); border-radius: 99px; padding: 12px 18px; font-weight: 800; box-shadow: var(--ombre); min-height: 52px; }
+  .barre-haut h2 { margin: 0; font-size: 28px; flex: 1; text-align: center; padding-right: 60px; }
+  .scene { position: relative; background: linear-gradient(#dff1ff, #fff3f8 70%, #d9f5e2 70%); border-radius: 32px;
+           padding: 104px 16px 18px; box-shadow: var(--ombre); display: flex; flex-direction: column; align-items: center; }
+  .scene .avatar { font-size: 26px; }
+  .bulle-dialogue {
+    position: absolute; top: 12px; left: 14px; right: 14px; background: #fff; border-radius: 22px; padding: 10px 14px;
+    font-weight: 700; text-align: center; box-shadow: 0 4px 10px rgba(74,59,82,.12); min-height: 48px;
+    display: flex; align-items: center; justify-content: center; font-size: 17px; z-index: 2;
+  }
+  .bulle-dialogue::after { content: ""; position: absolute; bottom: -10px; left: 50%; margin-left: -10px;
+    border: 10px solid transparent; border-top-color: #fff; border-bottom: 0; }
+  .bulle-dialogue.nouveau { animation: pop .3s ease-out; }
+  .indice { font-size: 14px; color: var(--texte-doux); margin-top: 6px; }
+  .traits { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  .trait { background: var(--violet); border-radius: 99px; padding: 6px 14px; font-weight: 700; font-size: 16px; }
+  .actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .action {
+    border-radius: 24px; padding: 14px 6px; min-height: 96px; font-weight: 800; font-size: 17px; box-shadow: var(--ombre);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; transition: transform .1s;
+  }
+  .action .gros { font-size: 36px; line-height: 1; }
+  .action:active { transform: scale(.94); }
+  .action.nourrir { background: var(--jaune); }
+  .action.dormir { background: var(--bleu); }
+  .action.jouer { background: var(--rose); }
+  .bouton-photo { background: var(--vert); border-radius: 24px; min-height: 60px; font-weight: 800; box-shadow: var(--ombre); width: 100%; }
+  .note-photo { text-align: center; color: var(--texte-doux); font-size: 14px; margin: -6px 0 0; }
+
+  /* ---------- Animations ---------- */
+  @keyframes flotte { 50% { transform: translateY(-5px); } }
+  @keyframes respire { 50% { transform: translateY(-3px) scale(1.01); } }
+  @keyframes hop { 30% { transform: translateY(-22%) scale(1.04, .97); } 60% { transform: translateY(0) scale(1.05, .93); } }
+  @keyframes berce { 50% { transform: rotate(-4deg) translateY(2px); } }
+  @keyframes zzz { 0% { opacity: 0; transform: translate(0, 0); } 40% { opacity: 1; } 100% { opacity: 0; transform: translate(10px, -18px); } }
+  @keyframes saute { 50% { transform: translateY(-4px); } }
+  @keyframes clignote { 50% { opacity: .45; } }
+  @keyframes pop { 0% { transform: scale(.85); opacity: .3; } 100% { transform: scale(1); opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; } }
+</style>
+</head>
+<body>
+<div class="page" id="app"></div>
+<input type="file" id="choixPhoto" accept="image/*" hidden>
+
+<script>
+/* =====================================================================
+   🫧 BULLEVILLE — LES DONNÉES DU JEU
+   Tu peux modifier tout ce qui se trouve dans cette partie sans risque.
+   Règles : garde les guillemets "..." autour des textes, et une virgule
+   entre deux éléments d'une liste.
+   ===================================================================== */
+
+// ---------- Les habitants ----------
+// id         : identifiant unique, sans espace ni accent (ne le change plus une fois le jeu lancé)
+// prenom     : le nom affiché
+// genre      : "f" ou "m" (sert à accorder les traits : gourmand / gourmande)
+// visage     : l'emoji affiché tant qu'aucune photo n'est choisie
+// traits     : 2 ou 3 traits pris dans la liste TRAITS plus bas
+// gags       : ses phrases fétiches (il les dit quand on touche son visage)
+// haut, bas  : couleurs du t-shirt et du pantalon (codes couleur, ex. "#ffb3c7")
+// accessoire : un emoji posé sur la tête ("" pour rien)
+const PERSONNAGES = [
+  {
+    id: "gaston", prenom: "Gaston", genre: "m", visage: "😎",
+    traits: ["dramatique", "reveur"],
+    gags: [
+      "J'ai encore rêvé que j'étais une baguette de pain. Croustillant.",
+      "Un jour, j'écrirai une chanson sur les chaussettes perdues.",
+      "Le nuage là-haut ? Il me ressemble. En plus mystérieux.",
+    ],
+    haut: "#a8d8ff", bas: "#6c7bd0", accessoire: "🎩",
+  },
+  {
+    id: "paulette", prenom: "Paulette", genre: "f", visage: "🤓",
+    traits: ["gourmand", "bavard"],
+    gags: [
+      "Tu savais que les crêpes sont des gâteaux qui ont pris confiance en eux ?",
+      "Au fait… au fait… au fait ! J'ai oublié ce que je voulais dire.",
+      "J'ai donné un prénom à chaque pépite de mon cookie.",
+    ],
+    haut: "#ffb3c7", bas: "#8f6fbf", accessoire: "🎀",
+  },
+  {
+    id: "momo", prenom: "Momo", genre: "m", visage: "🤠",
+    traits: ["flemmard", "gourmand"],
+    gags: [
+      "J'ai fait une sieste pour me préparer à ma sieste.",
+      "Mon sport préféré ? Le canapé, niveau expert.",
+      "Si on mangeait un goûter… avant le goûter ?",
+    ],
+    haut: "#ffe08a", bas: "#7fb8a4", accessoire: "🧢",
+  },
+  {
+    id: "lila", prenom: "Lila", genre: "f", visage: "😇",
+    traits: ["sportif", "dramatique"],
+    gags: [
+      "J'ai couru trois tours de la cour. Dans ma tête, c'était un marathon.",
+      "Je fais des pompes pendant que je réfléchis. Je réfléchis beaucoup.",
+      "Attention, je m'échauffe… ça peut durer longtemps.",
+    ],
+    haut: "#b9f0c9", bas: "#f28fb0", accessoire: "🌸",
+  },
+  {
+    id: "zephyr", prenom: "Zéphyr", genre: "m", visage: "🥸",
+    traits: ["reveur", "bavard", "flemmard"],
+    gags: [
+      "Je parle couramment le pigeon. Enfin, je crois.",
+      "Et si les escargots étaient juste très, très patients ?",
+      "J'ai une théorie sur les cuillères. Elle est longue.",
+    ],
+    haut: "#d9c6ff", bas: "#5e6c8f", accessoire: "👑",
+  },
+];
+
+// ---------- Les traits de caractère ----------
+// nom      : le mot affiché (masculin, féminin)
+// bonus    : points en plus (ou en moins) quand on fait une action
+// usure    : les besoins baissent plus vite (1.3 = 30 % plus vite)
+// toujours : actions que le perso accepte même quand il "n'en a pas besoin"
+const TRAITS = {
+  gourmand:   { emoji: "🍩", nom: { m: "gourmand", f: "gourmande" },
+                bonus: { nourrir: { faim: 10, humeur: 10 } }, usure: { faim: 1.2 }, toujours: ["nourrir"] },
+  flemmard:   { emoji: "🛋️", nom: { m: "flemmard", f: "flemmarde" },
+                bonus: { dormir: { energie: 15, humeur: 5 }, jouer: { energie: -10 } }, toujours: ["dormir"] },
+  dramatique: { emoji: "🎭", nom: { m: "dramatique", f: "dramatique" },
+                bonus: { jouer: { humeur: 10 } }, usure: { humeur: 1.3 } },
+  sportif:    { emoji: "⚽", nom: { m: "sportif", f: "sportive" },
+                bonus: { jouer: { humeur: 10, energie: 8 } }, usure: { faim: 1.1 } },
+  reveur:     { emoji: "☁️", nom: { m: "rêveur", f: "rêveuse" },
+                bonus: { dormir: { humeur: 10 } } },
+  bavard:     { emoji: "💬", nom: { m: "bavard", f: "bavarde" },
+                bonus: { jouer: { humeur: 5 } } },
+};
+
+// ---------- Ce que font les actions ----------
+// effets : points gagnés (+) ou perdus (-) sur chaque besoin
+// refus  : le perso refuse si ce besoin est déjà au-dessus (ou en dessous) de ce seuil
+const ACTIONS = {
+  nourrir: { emoji: "🍰", nom: "Nourrir", effets: { faim: 35, humeur: 5 },               refusSi: { besoin: "faim",    auDessusDe: 90 } },
+  dormir:  { emoji: "😴", nom: "Dormir",  effets: { energie: 45 },                       refusSi: { besoin: "energie", auDessusDe: 85 } },
+  jouer:   { emoji: "🎈", nom: "Jouer",   effets: { humeur: 25, energie: -15, faim: -10 }, refusSi: { besoin: "energie", enDessousDe: 15 } },
+};
+
+// ---------- Les dialogues ----------
+// {nom} est remplacé par le prénom du perso.
+// "tous" = phrases pour tout le monde ; les autres clés = phrases réservées à un trait.
+const DIALOGUES = {
+  nourrir: {
+    tous: ["Miam ! Merci beaucoup !", "C'est délicieux !", "Mon ventre te fait un câlin.", "Ça sent bon, ça !"],
+    gourmand: ["Encore ! Encore ! … Bon, d'accord, merci !", "Je pourrais manger ça tous les jours. Et toutes les nuits.", "Je note ce plat 11 sur 10."],
+    dramatique: ["Cette tarte… a changé ma vie.", "Je n'oublierai jamais ce repas. JAMAIS."],
+    flemmard: ["Tu peux me donner la becquée ? Mes bras sont en pause."],
+  },
+  dormir: {
+    tous: ["Zzz… Bonne nuit !", "Juste cinq petites minutes…", "Ahh, ça fait du bien."],
+    flemmard: ["Enfin ! Mon activité préférée !", "Réveille-moi l'année prochaine."],
+    reveur: ["Je vais rêver de licornes qui font du ski.", "Ce soir, je rêve en couleurs."],
+    dramatique: ["Adieu, monde cruel… à demain matin."],
+  },
+  jouer: {
+    tous: ["Youpi ! On recommence ?", "Trop drôle !", "J'ai gagné ! … Je crois."],
+    sportif: ["Encore un tour ! Et un autre ! Et un autre !", "Record battu ! Enfin, mon record à moi."],
+    bavard: ["Pendant qu'on joue, je te raconte ma journée ? Alors ce matin…"],
+    dramatique: ["C'est le plus beau jour de ma vie ! (Comme hier.)"],
+    flemmard: ["On peut jouer… assis ?"],
+  },
+  refus_nourrir: {
+    tous: ["Merci, mais je n'ai plus de place !", "Mon ventre affiche COMPLET."],
+  },
+  refus_dormir: {
+    tous: ["Dormir ? Mais je suis en pleine forme !", "Pas sommeil du tout !"],
+  },
+  refus_jouer: {
+    tous: ["Trop fatigué·e… laisse-moi souffler.", "Mes jambes sont en mode pause."],
+    sportif: ["Même moi j'ai besoin d'une pause. Si si."],
+  },
+  // Quand un besoin est très bas et qu'on touche le perso
+  faim_basse:    { tous: ["Mon ventre fait des bruits de baleine…", "J'ai un petit creux. Un GRAND petit creux."] },
+  energie_basse: { tous: ["Je pourrais dormir debout…", "Mes paupières pèsent une tonne."] },
+  humeur_basse:  { tous: ["Je m'ennuie un peu… on joue ?", "J'ai besoin d'un peu de fun."],
+                   dramatique: ["Personne ne me comprend… sauf peut-être toi ?"] },
+};
+
+// ---------- Réglages du temps ----------
+// Combien de points chaque besoin perd par heure (même quand le jeu est fermé).
+const REGLAGES = {
+  pertesParHeure: { faim: 8, energie: 5, humeur: 6 },
+  seuilBas: 25,          // en dessous, la jauge clignote
+  valeurDepart: 75,      // besoins au tout début de la partie
+};
+
+/* =====================================================================
+   ⚙️ LA MÉCANIQUE DU JEU
+   Pas besoin de modifier en dessous pour changer les persos ou les textes.
+   ===================================================================== */
+
+const CLE_SAUVEGARDE = "bulleville-sauvegarde-v1";
+const CLE_PHOTO = "bulleville-photo-";
+const BESOINS = [
+  { id: "faim", emoji: "🍽️", nom: "Faim" },
+  { id: "energie", emoji: "⚡", nom: "Énergie" },
+  { id: "humeur", emoji: "💖", nom: "Humeur" },
+];
+
+let etat = chargerEtat();
+let ecran = { type: "village" };   // ou { type: "fiche", id: "gaston" }
+let dortJusqua = {};               // petite animation de sommeil (non sauvegardée)
+
+// ---------- Sauvegarde ----------
+function chargerEtat() {
+  let e = null;
+  try { e = JSON.parse(localStorage.getItem(CLE_SAUVEGARDE)); } catch (_) {}
+  if (!e || typeof e !== "object") e = { persos: {}, derniereMaj: Date.now() };
+  for (const p of PERSONNAGES) {
+    if (!e.persos[p.id]) {
+      e.persos[p.id] = { faim: REGLAGES.valeurDepart, energie: REGLAGES.valeurDepart, humeur: REGLAGES.valeurDepart };
+    }
+  }
+  return e;
+}
+function sauvegarder() {
+  try { localStorage.setItem(CLE_SAUVEGARDE, JSON.stringify(etat)); } catch (_) {}
+}
+function lirePhoto(id) {
+  try { return localStorage.getItem(CLE_PHOTO + id); } catch (_) { return null; }
+}
+
+// ---------- Le temps qui passe ----------
+function faireVieillir() {
+  const maintenant = Date.now();
+  const heures = Math.max(0, (maintenant - etat.derniereMaj) / 3600000);
+  etat.derniereMaj = maintenant;
+  if (heures === 0) return;
+  for (const p of PERSONNAGES) {
+    const s = etat.persos[p.id];
+    for (const b of BESOINS) {
+      let vitesse = REGLAGES.pertesParHeure[b.id] || 0;
+      for (const t of p.traits) {
+        const u = TRAITS[t] && TRAITS[t].usure && TRAITS[t].usure[b.id];
+        if (u) vitesse *= u;
+      }
+      s[b.id] = borner(s[b.id] - vitesse * heures);
+    }
+  }
+  sauvegarder();
+}
+
+// ---------- Outils ----------
+const borner = v => Math.max(0, Math.min(100, v));
+const auHasard = liste => liste[Math.floor(Math.random() * liste.length)];
+const trouverPerso = id => PERSONNAGES.find(p => p.id === id);
+function echapper(txt) {
+  return String(txt).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// Choisit une réplique : souvent une phrase liée à un trait du perso, sinon une phrase commune.
+function replique(situation, perso) {
+  const d = DIALOGUES[situation] || {};
+  const speciales = perso.traits.flatMap(t => d[t] || []);
+  const communes = d.tous || [];
+  const liste = speciales.length && (Math.random() < 0.6 || !communes.length) ? speciales : communes;
+  return liste.length ? auHasard(liste).replace(/\{nom\}/g, perso.prenom) : "…";
+}
+
+// ---------- Les actions ----------
+function agir(idPerso, idAction) {
+  faireVieillir();
+  const p = trouverPerso(idPerso);
+  const s = etat.persos[idPerso];
+  const a = ACTIONS[idAction];
+  const accepteToujours = p.traits.some(t => (TRAITS[t]?.toujours || []).includes(idAction));
+  const r = a.refusSi;
+  const refuse = r && !accepteToujours && (
+    (r.auDessusDe !== undefined && s[r.besoin] > r.auDessusDe) ||
+    (r.enDessousDe !== undefined && s[r.besoin] < r.enDessousDe)
+  );
+
+  if (refuse) {
+    afficherBulle(replique("refus_" + idAction, p));
+    return;
+  }
+
+  const total = { ...a.effets };
+  for (const t of p.traits) {
+    const bonus = TRAITS[t]?.bonus?.[idAction] || {};
+    for (const b in bonus) total[b] = (total[b] || 0) + bonus[b];
+  }
+  for (const b in total) s[b] = borner(s[b] + total[b]);
+  sauvegarder();
+
+  if (idAction === "dormir") dortJusqua[idPerso] = Date.now() + 4000;
+  afficher();
+  afficherBulle(replique(idAction, p));
+  const av = document.querySelector(".scene .avatar");
+  if (av && idAction !== "dormir") { av.classList.add("saute"); setTimeout(() => av.classList.remove("saute"), 500); }
+  if (idAction === "dormir") setTimeout(afficher, 4100);
+}
+
+// Toucher le visage : il se plaint d'un besoin, ou sort un de ses running gags
+function toucher(idPerso) {
+  const p = trouverPerso(idPerso);
+  const s = etat.persos[idPerso];
+  const bas = BESOINS.filter(b => s[b.id] < REGLAGES.seuilBas);
+  if (bas.length && Math.random() < 0.7) afficherBulle(replique(auHasard(bas).id + "_basse", p));
+  else afficherBulle(p.gags.length ? auHasard(p.gags) : "…");
+}
+
+// ---------- Photo du visage (reste sur l'appareil) ----------
+let photoPour = null;
+function choisirPhoto(id) {
+  photoPour = id;
+  const input = document.getElementById("choixPhoto");
+  input.value = "";
+  input.click();
+}
+document.getElementById("choixPhoto").addEventListener("change", e => {
+  const fichier = e.target.files && e.target.files[0];
+  if (!fichier || !photoPour) return;
+  const id = photoPour;
+  const url = URL.createObjectURL(fichier);
+  const img = new Image();
+  img.onload = () => {
+    // Recadre au centre en carré, puis réduit à 256 px pour prendre peu de place
+    const cote = Math.min(img.naturalWidth, img.naturalHeight);
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 256;
+    canvas.getContext("2d").drawImage(img,
+      (img.naturalWidth - cote) / 2, (img.naturalHeight - cote) / 2, cote, cote, 0, 0, 256, 256);
+    URL.revokeObjectURL(url);
+    try {
+      localStorage.setItem(CLE_PHOTO + id, canvas.toDataURL("image/jpeg", 0.85));
+      afficher();
+      afficherBulle("Oh ! J'ai un nouveau visage !");
+    } catch (_) {
+      afficherBulle("Oups, plus de place pour la photo sur cet appareil.");
+    }
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); afficherBulle("Je n'arrive pas à lire cette image."); };
+  img.src = url;
+});
+
+// ---------- Dessin ----------
+function humeurEmoji(s, endormi) {
+  if (endormi) return "😴";
+  if (s.faim < REGLAGES.seuilBas) return "🍽️";
+  if (s.energie < REGLAGES.seuilBas) return "🥱";
+  if (s.humeur < REGLAGES.seuilBas) return "😢";
+  if (s.humeur > 70) return "😄";
+  return "🙂";
+}
+
+function dessinerAvatar(p, avecHumeur) {
+  const s = etat.persos[p.id];
+  const photo = lirePhoto(p.id);
+  const endormi = (dortJusqua[p.id] || 0) > Date.now();
+  const visage = photo
+    ? `<img src="${photo}" alt="">`
+    : `<span class="emoji">${echapper(p.visage)}</span>`;
+  // Corps cartoon : bras, t-shirt, jambes, chaussures, mains en gants ronds
+  const corps = `
+    <svg class="corps" viewBox="0 0 100 82" aria-hidden="true">
+      <path d="M24 16 Q8 32 14 50" stroke="${p.haut}" stroke-width="13" fill="none" stroke-linecap="round"/>
+      <path d="M76 16 Q92 32 86 50" stroke="${p.haut}" stroke-width="13" fill="none" stroke-linecap="round"/>
+      <circle cx="14" cy="53" r="7.5" fill="#fff" stroke="#e6dce8" stroke-width="1.5"/>
+      <circle cx="86" cy="53" r="7.5" fill="#fff" stroke="#e6dce8" stroke-width="1.5"/>
+      <rect x="31" y="46" width="15" height="26" rx="7.5" fill="${p.bas}"/>
+      <rect x="54" y="46" width="15" height="26" rx="7.5" fill="${p.bas}"/>
+      <path d="M24 10 Q50 0 76 10 L79 50 Q50 58 21 50 Z" fill="${p.haut}"/>
+      <path d="M40 6 Q50 14 60 6" stroke="rgba(0,0,0,.12)" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <ellipse cx="37" cy="75" rx="11" ry="6" fill="#6b5a73"/>
+      <ellipse cx="63" cy="75" rx="11" ry="6" fill="#6b5a73"/>
+    </svg>`;
+  return `
+    <div class="avatar ${endormi ? "dort" : ""}">
+      ${corps}
+      <div class="tete" ${avecHumeur ? `data-toucher="${p.id}"` : ""}>${visage}</div>
+      ${p.accessoire ? `<span class="accessoire">${echapper(p.accessoire)}</span>` : ""}
+      ${avecHumeur ? `<span class="humeur">${humeurEmoji(s, endormi)}</span>` : ""}
+      ${endormi ? `<span class="zzz">💤</span>` : ""}
+    </div>`;
+}
+
+function dessinerBarre(p, b, grande) {
+  const v = Math.round(etat.persos[p.id][b.id]);
+  return `
+    <div class="barre ${v < REGLAGES.seuilBas ? "bas" : ""}" data-barre="${p.id}:${b.id}">
+      <span class="icone">${b.emoji}</span>
+      ${grande ? `<span>${b.nom}</span>` : ""}
+      <div class="jauge"><div class="rempli ${b.id}" style="width:${v}%"></div></div>
+    </div>`;
+}
+
+function afficher() {
+  const app = document.getElementById("app");
+  if (ecran.type === "village") {
+    app.innerHTML = `
+      <header>
+        <h1 class="logo">Bulle<span class="bulle"></span>ville</h1>
+        <p class="sous-titre">Touche un habitant pour t'occuper de lui</p>
+      </header>
+      <main class="village">
+        ${PERSONNAGES.map(p => {
+          const s = etat.persos[p.id];
+          const alerte = BESOINS.some(b => s[b.id] < REGLAGES.seuilBas);
+          return `
+            <button class="carte-perso" data-ouvrir="${p.id}" aria-label="${echapper(p.prenom)}">
+              ${alerte ? `<span class="alerte">❗</span>` : ""}
+              ${dessinerAvatar(p, false)}
+              <div class="nom">${echapper(p.prenom)}</div>
+              <div class="mini-barres">${BESOINS.map(b => dessinerBarre(p, b, false)).join("")}</div>
+            </button>`;
+        }).join("")}
+      </main>`;
+  } else {
+    const p = trouverPerso(ecran.id);
+    const ancienneBulle = document.querySelector(".bulle-dialogue")?.textContent || "Coucou ! Touche mon visage.";
+    app.innerHTML = `
+      <section class="fiche">
+        <div class="barre-haut">
+          <button class="bouton-retour" data-retour>← Village</button>
+          <h2>${echapper(p.prenom)}</h2>
+        </div>
+        <div class="scene">
+          <div class="bulle-dialogue">${echapper(ancienneBulle)}</div>
+          ${dessinerAvatar(p, true)}
+        </div>
+        <div class="traits">
+          ${p.traits.map(t => TRAITS[t] ? `<span class="trait">${TRAITS[t].emoji} ${TRAITS[t].nom[p.genre] || TRAITS[t].nom.m}</span>` : "").join("")}
+        </div>
+        <div class="grandes-barres">${BESOINS.map(b => dessinerBarre(p, b, true)).join("")}</div>
+        <div class="actions">
+          ${Object.entries(ACTIONS).map(([id, a]) => `
+            <button class="action ${id}" data-action="${id}">
+              <span class="gros">${a.emoji}</span>${a.nom}
+            </button>`).join("")}
+        </div>
+        <button class="bouton-photo" data-photo="${p.id}">📷 Changer la photo</button>
+        <p class="note-photo">La photo reste sur cet appareil, rien n'est envoyé sur internet.</p>
+      </section>`;
+  }
+}
+
+function afficherBulle(texte) {
+  const el = document.querySelector(".bulle-dialogue");
+  if (!el) return;
+  el.textContent = texte;
+  el.classList.remove("nouveau");
+  void el.offsetWidth;       // relance l'animation
+  el.classList.add("nouveau");
+}
+
+// Met à jour seulement les jauges (sans redessiner tout l'écran)
+function rafraichirJauges() {
+  document.querySelectorAll("[data-barre]").forEach(el => {
+    const [id, besoin] = el.dataset.barre.split(":");
+    const v = Math.round(etat.persos[id][besoin]);
+    el.querySelector(".rempli").style.width = v + "%";
+    el.classList.toggle("bas", v < REGLAGES.seuilBas);
+  });
+}
+
+// ---------- Les touches à l'écran ----------
+document.getElementById("app").addEventListener("click", e => {
+  const cible = e.target.closest("[data-ouvrir],[data-retour],[data-action],[data-photo],[data-toucher]");
+  if (!cible) return;
+  if (cible.dataset.ouvrir) { ecran = { type: "fiche", id: cible.dataset.ouvrir }; afficher(); window.scrollTo(0, 0); }
+  else if (cible.hasAttribute("data-retour")) { ecran = { type: "village" }; afficher(); }
+  else if (cible.dataset.action) agir(ecran.id, cible.dataset.action);
+  else if (cible.dataset.photo) choisirPhoto(cible.dataset.photo);
+  else if (cible.dataset.toucher) toucher(cible.dataset.toucher);
+});
+
+// ---------- C'est parti ! ----------
+faireVieillir();
+afficher();
+setInterval(() => { faireVieillir(); rafraichirJauges(); }, 5000);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) { faireVieillir(); afficher(); }
+});
+</script>
+</body>
+</html>
