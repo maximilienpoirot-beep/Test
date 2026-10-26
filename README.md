@@ -44,3 +44,48 @@ Les modules JavaScript ne fonctionnent pas en ouvrant directement le fichier : i
 python3 -m http.server 8000
 # puis ouvrir http://localhost:8000
 ```
+
+---
+
+# Ombrevaux 🕯️
+
+Un jeu d'action-aventure gothique à la troisième personne, jouable dans le navigateur : **https://maximilienpoirot-beep.github.io/Test/ombrevaux/** (une fois publié sur `main`).
+
+Vous incarnez le dernier chasseur de l'Ordre. Votre seule arme est un grimoire dont les pages ont été dispersées dans la vallée d'Ombrevaux. Retrouvez-les, remontez du Bois des Pendus jusqu'à la cathédrale Sainte-Vesper et brisez la malédiction.
+
+## Contenu
+
+- **3 zones enchaînées** : Bois des Pendus et sa gorge voilée, Cimetière des Veilleurs, village de Malbrume, puis la cathédrale Sainte-Vesper et son chœur
+- **Grimoire à compléter** : Trait arcanique (de départ), Lumière sacrée, Pas de l'ombre, Chaîne de foudre. Chaque page ouvre aussi la suite du chemin (voile d'ombre, herse, paratonnerres)
+- **Ennemis** : squelettes (épéistes et archers) qui sortent des tombes, loups-garous qui bondissent, gargouilles qui s'éveillent sur leurs socles. Faiblesses élémentaires (la lumière brûle les morts, la foudre brise la pierre)
+- **Deux combats de boss** : la Bête de Malbrume, puis un ange de vitrail en trois phases
+- **Reliques cachées** (fioles de vie, encres de mana), lanternes de veille comme points de sauvegarde
+- **HUD complet** : minicarte orientée, objectif, barres de vie et de mana, barre de sorts, chiffres de dégâts, grimoire consultable (Tab)
+
+## Commandes
+
+| Touche | Action |
+|---|---|
+| ZQSD / WASD | Se déplacer (Maj pour courir) |
+| Souris | Viser |
+| Clic gauche | Lancer le sort préparé |
+| 1, 2, 3 / molette | Choisir le sort |
+| Espace | Pas de l'ombre |
+| E | Allumer une lanterne, se reposer |
+| Tab | Ouvrir le grimoire |
+
+## Structure
+
+Three.js 0.160 (copié dans `ombrevaux/vendor/three/`), modules ES sans étape de compilation. Tous les modèles, textures et effets sont générés par le code.
+
+| Fichier | Rôle |
+|---|---|
+| `ombrevaux/js/main.js` | Boucle de jeu, quête, apparitions d'ennemis, écrans |
+| `ombrevaux/js/world.js` | Carte, décors, collisions, lumières fixes |
+| `ombrevaux/js/player.js` | Chasseur, sorts disponibles, caméra à la 3e personne |
+| `ombrevaux/js/spells.js` | Sorts, projectiles, éclairs, ondes de choc |
+| `ombrevaux/js/enemies.js`, `boss.js` | Comportements des ennemis et du boss |
+| `ombrevaux/js/models.js`, `textures.js` | Modèles 3D et textures procédurales |
+| `ombrevaux/js/hud.js` | Interface et minicarte |
+
+Ajouter `?debug` à l'adresse débloque tous les sorts, avec F2 à F6 pour se téléporter aux lanternes et G pour l'invincibilité.

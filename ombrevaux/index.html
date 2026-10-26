@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#07080c">
+<title>Ombrevaux</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700&family=Cinzel:wght@400;600;700&family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.js", "three/addons/": "./vendor/three/addons/" } }
+</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="vignette"></div>
+<div id="hurt"></div>
+<div id="whiteout"></div>
+
+<div id="hud" class="hidden">
+  <div id="topleft">
+    <div id="objective">
+      <div class="label">Objectif</div>
+      <div id="obj-text"></div>
+    </div>
+  </div>
+  <div id="zone-banner"><div class="line"></div><span></span><div class="line"></div></div>
+  <div id="minimap-wrap">
+    <canvas id="minimap" width="200" height="200"></canvas>
+    <div id="zone-name"></div>
+    <div id="relics">
+      <span title="Fioles écarlates"><i class="dot red"></i><b id="r-fiole">0</b>/3</span>
+      <span title="Encres d'étoile"><i class="dot blue"></i><b id="r-encre">0</b>/3</span>
+      <span title="Pages du grimoire"><i class="dot gold"></i><b id="r-pages">1</b>/4</span>
+    </div>
+  </div>
+  <div id="bossbar" class="hidden">
+    <div class="name"></div>
+    <div class="bar"><div class="trail"></div><div class="fill"></div></div>
+  </div>
+  <div id="crosshair"><i></i><i></i><i></i><i></i></div>
+  <div id="prompt" class="hidden"></div>
+  <div id="bottom">
+    <div id="bars">
+      <div class="bar hp"><div class="trail"></div><div class="fill"></div><span></span></div>
+      <div class="bar mana"><div class="fill"></div><span></span></div>
+    </div>
+    <div id="spellbar"></div>
+  </div>
+  <div id="toasts"></div>
+  <div id="pagebanner"><div class="small">Nouvelle page du grimoire</div><div class="big"></div><div class="hint"></div></div>
+  <div id="floaters"></div>
+  <div id="ebars"></div>
+  <div id="keyhints">
+    <span><kbd>Tab</kbd> Grimoire</span>
+    <span><kbd>Échap</kbd> Pause</span>
+  </div>
+</div>
+
+<div id="title" class="screen">
+  <div class="inner">
+    <div class="pre">Une nuit sans fin s'est abattue sur la vallée</div>
+    <h1>Ombrevaux</h1>
+    <div class="sub">Le Grimoire du Chasseur</div>
+    <p class="lore">Depuis que la Rosace de Sainte-Vesper s'est fissurée, les morts ne dorment plus et les bêtes ont faim.
+    Vous êtes le dernier chasseur de l'Ordre. Votre seule arme : un grimoire dont les pages ont été dispersées dans la vallée.
+    Retrouvez-les. Remontez jusqu'à la cathédrale. Mettez fin à la malédiction.</p>
+    <button id="btn-start" class="btn" disabled>Chargement…</button>
+    <p id="touch-note" class="note" hidden>Ombrevaux se joue au clavier et à la souris, sur ordinateur.</p>
+    <div class="controls">
+      <div><kbd>Z</kbd><kbd>Q</kbd><kbd>S</kbd><kbd>D</kbd> / <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Se déplacer</div>
+      <div><kbd>Souris</kbd> Viser · <kbd>Clic gauche</kbd> Lancer le sort</div>
+      <div><kbd>1</kbd>–<kbd>3</kbd> / <kbd>Molette</kbd> Choisir le sort · <kbd>Maj</kbd> Courir</div>
+      <div><kbd>Espace</kbd> Pas de l'ombre · <kbd>E</kbd> Interagir · <kbd>Tab</kbd> Grimoire</div>
+    </div>
+  </div>
+</div>
+
+<div id="pause" class="screen hidden">
+  <div class="inner">
+    <h2>Pause</h2>
+    <button id="btn-resume" class="btn">Reprendre</button>
+    <div class="opt">
+      <label>Sensibilité souris <input id="opt-sens" type="range" min="0.3" max="2.5" step="0.1" value="1"></label>
+      <label>Qualité <select id="opt-quality"><option value="high">Haute</option><option value="medium" selected>Moyenne</option><option value="low">Basse</option></select></label>
+      <label><input id="opt-invert" type="checkbox"> Inverser l'axe vertical</label>
+    </div>
+  </div>
+</div>
+
+<div id="grimoire" class="screen hidden">
+  <div class="book">
+    <div class="page left">
+      <h2>Grimoire du Chasseur</h2>
+      <div id="spell-pages"></div>
+    </div>
+    <div class="page right">
+      <h3>Chroniques</h3>
+      <div id="chronicle"></div>
+      <h3>Reliques</h3>
+      <div id="relic-list"></div>
+      <h3>Bestiaire</h3>
+      <div class="bestiary">
+        <p><b>Squelettes</b> : morts sans repos. Craignent la <span class="holy">Lumière sacrée</span>.</p>
+        <p><b>Loups-garous</b> : rapides, ils bondissent de loin. Gardez vos distances, esquivez avec le <span class="shadow">Pas de l'ombre</span>.</p>
+        <p><b>Gargouilles</b> : la pierre résiste à l'arcane, mais la <span class="light">foudre</span> la brise.</p>
+      </div>
+      <div class="close-hint">Appuyez sur <kbd>Tab</kbd> pour refermer</div>
+    </div>
+  </div>
+</div>
+
+<div id="death" class="screen hidden">
+  <div class="inner">
+    <h2 class="blood">La nuit vous a emporté</h2>
+    <p>Mais la flamme de la dernière lanterne veille encore.</p>
+    <button id="btn-respawn" class="btn">Se relever</button>
+  </div>
+</div>
+
+<div id="victory" class="screen hidden">
+  <div class="inner">
+    <div class="pre">L'aube se lève sur Ombrevaux</div>
+    <h1>La malédiction est brisée</h1>
+    <p class="lore">La Rosace s'éteint, puis se rallume d'une lumière douce. Séraphine retrouve le repos de pierre et de verre.
+    Pour la première fois depuis des années, un oiseau chante au-dessus du Bois des Pendus.</p>
+    <div id="stats"></div>
+    <button id="btn-again" class="btn">Rejouer</button>
+  </div>
+</div>
+
+<div id="loading"><div class="spin"></div></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
