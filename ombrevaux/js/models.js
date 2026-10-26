@@ -63,10 +63,44 @@ export function makeHunter() {
   strap.rotation.z = 0.6;
   // Mantelet
   add(torso, cyl(0.2, 0.4, 0.32, 8), coat, 0, 0.6, 0);
-  // Cape
+  // Cape en trois segments articulés, bord inférieur effiloché
+  const capeM = mat(0x17111a, { side: THREE.DoubleSide });
+  const capeLining = mat(0x4a0f18, { side: THREE.DoubleSide });
   const capeP = pivot(torso, 0, 0.66, -0.17);
-  const cape = add(capeP, box(0.62, 1.25, 0.04), mat(0x140f14, { side: THREE.DoubleSide }), 0, -0.62, 0);
-  cape.rotation.x = 0.04;
+  const capeSegs = [];
+  let parent = capeP;
+  for (let i = 0; i < 3; i++) {
+    const seg = i === 0 ? capeP : pivot(parent, 0, -0.42, 0);
+    const w = 0.6 + i * 0.06;
+    add(seg, box(w, 0.44, 0.035), capeM, 0, -0.21, 0);
+    add(seg, box(w - 0.04, 0.42, 0.01), capeLining, 0, -0.21, 0.025, false);
+    if (i === 2) {
+      for (let k = 0; k < 4; k++) {
+        const tip = add(seg, new THREE.ConeGeometry(0.09, 0.22, 3), capeM, -w / 2 + 0.09 + k * (w - 0.18) / 3, -0.52, 0);
+        tip.rotation.x = Math.PI;
+        tip.scale.z = 0.2;
+      }
+    }
+    capeSegs.push(seg);
+    parent = seg;
+  }
+  // Pans du manteau à l'arrière
+  const tails = [];
+  for (const s of [-1, 1]) {
+    const t = pivot(torso, 0.12 * s, -0.1, -0.14);
+    add(t, box(0.22, 0.78, 0.035), coat, 0, -0.38, 0);
+    tails.push(t);
+  }
+  // Épaulière, sacoches et fioles
+  const iron = mat(0x2a2a30, { metalness: 0.75, roughness: 0.4 });
+  const pauldron = add(torso, new THREE.SphereGeometry(0.2, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2), iron, -0.32, 0.6, 0);
+  pauldron.scale.set(1, 0.7, 1.05);
+  add(torso, new THREE.TorusGeometry(0.19, 0.018, 4, 12), buckle, -0.32, 0.6, 0).rotation.x = Math.PI / 2;
+  add(torso, box(0.12, 0.14, 0.08), leather, 0.2, -0.04, 0.12);
+  add(torso, box(0.12, 0.14, 0.08), leather, -0.22, -0.04, 0.1);
+  for (const [i, c] of [[0, 0xff2040], [1, 0x3a70ff], [2, 0xff2040]]) {
+    add(torso, cyl(0.03, 0.035, 0.12, 6), mat(0x000000, { emissive: c, emissiveIntensity: 1.6 }), -0.06 + i * 0.07, 0.11, 0.16, false);
+  }
 
   const arms = [];
   for (const s of [-1, 1]) {
@@ -89,6 +123,11 @@ export function makeHunter() {
   add(head, cyl(0.46, 0.46, 0.03, 12), hatM, 0, 0.3, 0);
   add(head, cyl(0.17, 0.22, 0.28, 8), hatM, 0, 0.45, 0);
   add(head, cyl(0.225, 0.225, 0.06, 8), mat(0x5a1a1a), 0, 0.34, 0);
+  add(head, box(0.06, 0.06, 0.02), buckle, 0, 0.34, 0.225, false);
+  // Plume de corbeau
+  const feather = add(head, new THREE.ConeGeometry(0.05, 0.55, 4), mat(0x0c0c12, { roughness: 0.5 }), 0.2, 0.5, -0.06);
+  feather.rotation.set(-0.5, 0, -0.55);
+  feather.scale.z = 0.25;
 
   // Grimoire flottant
   const book = new THREE.Group();
@@ -99,7 +138,7 @@ export function makeHunter() {
   add(book, box(0.04, 0.09, 0.4), buckle, -0.15, 0, 0);
 
   root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-  return { root, hips, legs, arms, torso, head, cape: capeP, book, pagesMat };
+  return { root, hips, legs, arms, torso, head, cape: capeP, capeSegs, tails, book, pagesMat };
 }
 
 // ---------------------------------------------------------------- Squelette
@@ -420,4 +459,22 @@ export function compactModel(root) {
     }
   }
   return root;
+}
+
+// Liseré lumineux sur les contours (fresnel) : les silhouettes ressortent dans la nuit.
+export function addRim(root, color, strength = 0.6, power = 2.5) {
+  const c = new THREE.Color(color).multiplyScalar(strength);
+  root.traverse((o) => {
+    if (!o.isMesh || !o.material.isMeshStandardMaterial || o.material.userData.rim) return;
+    const m = o.material;
+    m.userData.rim = true;
+    m.onBeforeCompile = (sh) => {
+      sh.uniforms.uRim = { value: c };
+      sh.fragmentShader = 'uniform vec3 uRim;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        float rimF = 1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0);
+        totalEmissiveRadiance += uRim * pow(rimF, ${power.toFixed(2)});`);
+    };
+    m.customProgramCacheKey = () => 'rim' + power.toFixed(2);
+    m.needsUpdate = true;
+  });
 }

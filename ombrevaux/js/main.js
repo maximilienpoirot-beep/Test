@@ -3,6 +3,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { World, POI, ZONES } from './world.js';
 import { Player, ThirdPersonCamera, SPELLS } from './player.js';
 import { Particles } from './particles.js';
@@ -12,6 +13,10 @@ import { EnemyManager } from './enemies.js';
 import { Boss } from './boss.js';
 import { HUD, ICONS } from './hud.js';
 import { makeOrb } from './models.js';
+import { CircleFX, circleDataURL } from './circles.js';
+import { Trails } from './trails.js';
+import { Debris } from './debris.js';
+import { Ambience, addWind } from './ambience.js';
 import { damp, mulberry32 } from './utils.js';
 
 const DEBUG = new URLSearchParams(location.search).has('debug');
@@ -64,6 +69,38 @@ const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 
+// Étalonnage final : ombres bleu-vert, hautes lumières chaudes, vignettage,
+// grain de film et légère aberration chromatique sur les bords.
+const grade = new ShaderPass({
+  uniforms: {
+    tDiffuse: { value: null }, uTime: { value: 0 }, uRes: { value: new THREE.Vector2(1, 1) },
+    uCA: { value: 0.003 }, uGrain: { value: 0.04 }, uVig: { value: 0.6 }, uSat: { value: 1.06 }, uContrast: { value: 1.07 },
+    uShadow: { value: new THREE.Vector3(0.0, 0.05, 0.075) }, uHigh: { value: new THREE.Vector3(0.06, 0.03, -0.015) }, uHurt: { value: 0 },
+  },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform float uTime; uniform vec2 uRes;
+    uniform float uCA, uGrain, uVig, uSat, uContrast, uHurt; uniform vec3 uShadow, uHigh;
+    varying vec2 vUv;
+    void main() {
+      vec2 d = vUv - 0.5;
+      float r = length(d);
+      vec2 off = d * (uCA + uHurt * 0.012) * r * 2.0;
+      vec3 c = vec3(texture2D(tDiffuse, vUv - off).r, texture2D(tDiffuse, vUv).g, texture2D(tDiffuse, vUv + off).b);
+      float l = dot(c, vec3(0.299, 0.587, 0.114));
+      c += uShadow * pow(1.0 - l, 3.0) + uHigh * l * l;
+      c = mix(vec3(l), c, uSat);
+      c = (c - 0.5) * uContrast + 0.5;
+      float vig = smoothstep(0.95, 0.3, r);
+      c *= mix(1.0, vig, uVig);
+      c = mix(c, c * vec3(1.0, 0.25, 0.25), uHurt * smoothstep(0.25, 0.75, r));
+      float n = fract(sin(dot(vUv * uRes + fract(uTime) * 91.7, vec2(12.9898, 78.233))) * 43758.5453);
+      c += (n - 0.5) * uGrain;
+      gl_FragColor = vec4(c, 1.0);
+    }`,
+});
+composer.addPass(grade);
+
 const hemi = new THREE.HemisphereLight(0x42507a, 0x18130f, 0.75);
 scene.add(hemi);
 const ambient = new THREE.AmbientLight(0x1c1c2a, 0.6);
@@ -94,6 +131,7 @@ function applyQuality() {
 function resize() {
   renderer.setSize(innerWidth, innerHeight, false);
   composer.setSize(innerWidth, innerHeight);
+  grade.uniforms.uRes.value.set(innerWidth, innerHeight);
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   const h = innerHeight * renderer.getPixelRatio();
@@ -129,6 +167,12 @@ class Game {
     this.hud = new HUD(this);
     this.combat = new Combat(this);
     this.enemies = new EnemyManager(this);
+    this.circles = new CircleFX(scene, this.world);
+    this.trails = new Trails(scene);
+    this.debris = new Debris(scene, this.world);
+    this.world.attachFx(this.circles);
+    this.ambience = new Ambience(scene, this.world, moonDir);
+    addWind(this.world.barkMat, this.ambience.time, 0.004);
     this.boss = new Boss(this);
     this.extraUpdates = [];
     this.orbs = [];
@@ -155,6 +199,7 @@ class Game {
     this.world.addPickup('page', sh.x, sh.z - 2, this.world.getHeight(sh.x, sh.z) + 0.4).spell = 'holy';
     const ch = POI.chapel;
     this.world.addPickup('page', ch.x, ch.z - 2.6, this.world.getHeight(ch.x, ch.z) + 0.3).spell = 'shadow';
+    for (const pk of this.world.pickups) this.world.decoratePickup(pk);
 
     this.setupSpawns();
     if (DEBUG) for (const k in this.player.unlocked) this.player.unlocked[k] = true;
@@ -262,6 +307,7 @@ class Game {
       this.hud.setBoss(null);
       const pk = this.world.addPickup('page', e.pos.x, e.pos.z);
       pk.spell = 'lightning';
+      this.world.decoratePickup(pk);
       this.hud.toast('La Bête s\'effondre. Une page brille dans sa fourrure.');
       this.spawnOrb(c, 'hp'); this.spawnOrb(c, 'hp'); this.spawnOrb(c, 'mana');
       return;
@@ -278,6 +324,7 @@ class Game {
   onConduitPowered(c) {
     if (c.powered) return;
     c.powered = true;
+    this.circles.spawn({ pos: new THREE.Vector3(c.pos.x, 0, c.pos.z), radius: 2.2, color: 0x8fd0ff, symbol: 'lightning', life: Infinity, spin: 0.8, alpha: 0.7, pulse: 0.3, intensity: 1.8 });
     const n = this.world.conduits.filter((x) => x.powered).length;
     this.hud.toast(`Paratonnerre chargé (${n}/3)`);
     if (n === 3) {
@@ -413,6 +460,7 @@ class Game {
     this.playerLight.color.setHex(SPELLS[p.selected].color);
 
     this.camCtl.update(dt, input, p, w);
+    p.aimPitch = this.camCtl.pitch;
     p.update(dt, input, this.camCtl.yaw, w);
     // Le boss est solide
     if (this.boss.alive && this.boss.m.root.visible) {
@@ -478,6 +526,10 @@ class Game {
     w.followCamera(camera);
     this.particles.update(dt);
     this.smoke.update(dt);
+    this.circles.update(dt);
+    this.ambience.update(dt, camera.position);
+    this.trails.update(dt, camera.position);
+    this.debris.update(dt);
     this.hud.update(dt);
   }
 
@@ -599,6 +651,10 @@ class Game {
     for (let i = 0; i < n + (Math.random() < rate * dt ? 1 : 0); i++) {
       const x = p.x + (Math.random() - 0.5) * 40, zz = p.z + (Math.random() - 0.5) * 40;
       const y = this.world.getHeight(x, zz) + 0.5 + Math.random() * 4;
+      if (kind === 'fireflies' && Math.random() < 0.5) {
+        // Feuilles mortes qui tombent en tournoyant
+        this.smoke.emit(x, y + 4, zz, (Math.random() - 0.5) * 1.2, -0.6 - Math.random() * 0.4, (Math.random() - 0.5) * 1.2, new THREE.Color(0x4a3420), 0.16, 7, { sizeEnd: 0.14, drag: 0.8, alpha: 0.9 });
+      }
       if (kind === 'fireflies') this.particles.emit(x, y, zz, (Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.6, new THREE.Color(0xc8ff6a), 0.18, 5, { intensity: 2.2, sizeEnd: 0.1 });
       else if (kind === 'wisps') this.particles.emit(x, y * 0.5, zz, (Math.random() - 0.5) * 0.4, 0.15, (Math.random() - 0.5) * 0.4, new THREE.Color(0x6ab8ff), 0.35, 5, { intensity: 1.6, sizeEnd: 0.1 });
       else if (kind === 'embers') this.particles.emit(x, y * 0.4, zz, (Math.random() - 0.5) * 0.5, 0.6 + Math.random() * 0.6, (Math.random() - 0.5) * 0.5, new THREE.Color(0xff7a2a), 0.12, 4, { intensity: 2.5, sizeEnd: 0.02 });
@@ -615,6 +671,9 @@ class Game {
       const sky = this.world.skyMat.uniforms;
       sky.uHorizon.value.lerpColors(new THREE.Color(0x0d121c), new THREE.Color(0x8a6060), k);
       sky.uTop.value.lerpColors(new THREE.Color(0x03040a), new THREE.Color(0x2a3a60), k);
+      this.ambience.setDawn(k);
+      grade.uniforms.uShadow.value.set(0.03 * k, 0.05 * (1 - k), 0.075 * (1 - k));
+      grade.uniforms.uHigh.value.set(0.06 + 0.04 * k, 0.03 + 0.02 * k, -0.015);
       hemi.intensity = 0.75 + k * 0.8;
       moon.color.lerpColors(new THREE.Color(0x9fb2e0), new THREE.Color(0xffc8a0), k);
       this.world.roseMat.color.setScalar(1.1 + k * 0.8);
@@ -645,10 +704,12 @@ class Game {
 
   renderGrimoire() {
     const p = this.player;
+    this.sigils = this.sigils || {};
     $('#spell-pages').innerHTML = ['arcane', 'holy', 'lightning', 'shadow'].map((k) => {
       const s = SPELLS[k], ok = p.unlocked[k];
+      const sig = this.sigils[k + ok] || (this.sigils[k + ok] = circleDataURL(ok ? '#5a1a0c' : '#9a8a6a', k, 200));
       const key = k === 'shadow' ? 'Espace' : s.slot;
-      return `<div class="spage ${ok ? '' : 'locked'}"><div class="ico">${ok ? ICONS[k] : ''}</div><div>
+      return `<div class="spage ${ok ? '' : 'locked'}"><div class="ico"><img class="sig" src="${sig}" alt="">${ok ? ICONS[k] : ''}</div><div>
         <div class="t">${ok ? s.name : 'Page manquante'}</div>
         ${ok ? `<div class="meta">Touche ${key} · ${s.mana} mana</div><p>${s.desc}</p>` : '<p>Une page arrachée. Elle doit se trouver quelque part dans la vallée…</p>'}
       </div></div>`;
@@ -753,6 +814,8 @@ function frame() {
     game.world.updateFog(game.player.pos, game.t);
     game.updateAmbient(dt);
     game.particles.update(dt);
+    game.circles.update(dt);
+    game.ambience.update(dt, camera.position);
   } else if (game.state === 'victory') {
     game.update(dt * 0.5);
   }
@@ -760,6 +823,8 @@ function frame() {
   input.mouseDX = input.mouseDY = 0;
   input.wheel = 0;
   input.clicked = false;
+  grade.uniforms.uTime.value = performance.now() / 1000;
+  grade.uniforms.uHurt.value = game.state === 'dead' ? 0.8 : Math.min(1, game.hud.hurtV * 0.8);
   renderer.info.reset();
   composer.render();
   game.rinfo = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
@@ -780,6 +845,7 @@ function debugKeys() {
 // Démarrage
 game = new Game();
 window.game = game;
+game.hud.decorate();
 window.__debug = { setNoLock: (v) => { DEBUG_NOLOCK = v; }, input, THREE };
 applyQuality();
 resize();

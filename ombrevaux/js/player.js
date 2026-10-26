@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { makeHunter, compactModel } from './models.js';
+import { makeHunter, compactModel, addRim } from './models.js';
 import { damp, angleLerp, clamp } from './utils.js';
 
 export const SPELLS = {
@@ -25,6 +25,10 @@ export class Player {
   constructor(scene) {
     this.model = makeHunter();
     compactModel(this.model.root);
+    addRim(this.model.root, 0x7a9ad8, 0.5, 2.6);
+    this.aimPitch = 0;
+    this.prevFacing = 0;
+    this.turn = 0;
     scene.add(this.model.root);
     this.pos = new THREE.Vector3();
     this.radius = 0.45;
@@ -152,14 +156,32 @@ export class Player {
     const cast = this.castAnim;
     m.arms[1].rotation.x = cast > 0 ? -1.5 * Math.min(1, cast * 2) : sw * 0.6;
     m.arms[1].rotation.z = cast > 0 ? -0.1 : 0;
+    const t = performance.now() / 1000;
+    const aiming = Math.min(1, this.aimTimer * 3);
     m.torso.rotation.x = sp * 0.12;
     m.torso.rotation.y = cast > 0 ? -0.25 * Math.min(1, cast * 2) : 0;
+    // Respiration au repos
+    m.torso.scale.y = 1 + Math.sin(t * 2.1) * 0.012 * (1 - Math.min(1, sp));
+    m.head.rotation.x = -this.aimPitch * 0.5 * aiming;
     m.hips.position.y = 0.95 + Math.abs(Math.cos(this.walkPhase)) * 0.05 * sp;
-    m.cape.rotation.x = 0.15 + sp * 0.35 + Math.sin(this.walkPhase * 0.5) * 0.06;
-    // Grimoire en orbite près de la main gauche
-    const t = performance.now() / 1000;
-    m.book.position.set(-0.55, 1.25 + Math.sin(t * 2.2) * 0.07, 0.25);
-    m.book.rotation.set(-0.6 + Math.sin(t * 1.3) * 0.1, 0.4, 0.15);
+    // Main gauche qui présente le grimoire pendant l'incantation
+    if (aiming > 0) { m.arms[0].rotation.x = -0.9 * aiming - sw * 0.2; m.arms[0].rotation.z = 0.25 * aiming; } else m.arms[0].rotation.z = 0;
+    // Cape et pans du manteau : ondulation qui suit la vitesse et les virages
+    let df = this.facing - this.prevFacing;
+    df = ((df + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+    this.prevFacing = this.facing;
+    this.turn += ((dt > 0 ? df / dt : 0) - this.turn) * Math.min(1, dt * 6);
+    m.capeSegs.forEach((seg, i) => {
+      const base = i === 0 ? 0.12 + sp * 0.32 : 0.06 + sp * 0.18;
+      seg.rotation.x = base + Math.sin(t * 2.3 - i * 0.9) * (0.04 + sp * 0.05) + Math.sin(this.walkPhase - i) * 0.04 * sp;
+      seg.rotation.z = -this.turn * 0.04 * (i + 1);
+    });
+    m.tails.forEach((tl, i) => { tl.rotation.x = 0.08 + sp * 0.35 + Math.sin(this.walkPhase + i * Math.PI) * 0.15 * Math.min(sp, 1); });
+    // Grimoire : orbite au repos, devant la main gauche pendant l'incantation
+    const bx = -0.55 + aiming * 0.2, by = 1.25 + Math.sin(t * 2.2) * 0.07 * (1 - aiming), bz = 0.25 + aiming * 0.25;
+    m.book.position.set(bx, by, bz);
+    m.book.rotation.set(-0.6 + Math.sin(t * 1.3) * 0.1 - aiming * 0.5, 0.4 - aiming * 0.4, 0.15);
+    this.model.pagesMat.emissiveIntensity = 0.55 + cast * 1.5;
     // Main droite (point de départ des sorts) en coordonnées monde
     m.arms[1].userData.hand.getWorldPosition(this.handPos);
   }

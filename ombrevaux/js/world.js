@@ -274,6 +274,7 @@ export class World {
     const variants = [];
     for (let i = 0; i < 4; i++) variants.push(this.treeGeometry(100 + i * 17));
     const barkMat = new THREE.MeshStandardMaterial({ color: 0x2a2520, roughness: 1, flatShading: true });
+    this.barkMat = barkMat;
     const placements = variants.map(() => []);
     const rnd = this.rnd;
     const keep = [POI.shrine, POI.start, POI.chapel, POI.veil];
@@ -496,8 +497,24 @@ export class World {
     });
   }
 
+  // Cercles magiques du décor (branchés par le jeu une fois CircleFX créé).
+  attachFx(fx) {
+    this.fx = fx;
+    const vp = this.veil.mesh.position;
+    this.veil.circle = fx.spawn({ pos: new THREE.Vector3(vp.x, vp.y, vp.z + 0.05), vertical: true, normal: new THREE.Vector3(0, 0, 1), radius: 3.1, color: 0xa050ff, symbol: 'eye', life: Infinity, spin: 0.35, alpha: 0.85, intensity: 1.8 });
+    for (const pk of this.pickups) this.decoratePickup(pk);
+  }
+
+  decoratePickup(pk) {
+    if (!this.fx || !pk.alive || pk.circle) return;
+    const col = { page: 0xffd27a, fiole: 0xff3050, encre: 0x4a7dff }[pk.kind];
+    pk.circle = this.fx.spawn({ pos: new THREE.Vector3(pk.pos.x, 0, pk.pos.z), radius: pk.kind === 'page' ? 1.4 : 0.8, color: col, symbol: pk.kind === 'page' ? (pk.spell || 'star') : 'star', life: Infinity, spin: 0.6, alpha: pk.kind === 'page' ? 0.9 : 0.5, pulse: 0.3, intensity: 1.8 });
+    if (pk.ring) pk.ring.visible = false;
+  }
+
   dispelVeil() {
     if (!this.veil.alive) return false;
+    this.veil.circle?.kill();
     this.veil.alive = false;
     this.veil.collider.enabled = false;
     this.lightSpots = this.lightSpots.filter((s) => !s.veil);
@@ -1148,6 +1165,12 @@ export class World {
   }
 
   setSeal(on) {
+    if (on && !this.seal.circle && this.fx) {
+      this.seal.circle = this.fx.spawn({ pos: new THREE.Vector3(0, 7, -468.9), vertical: true, normal: new THREE.Vector3(0, 0, 1), radius: 6, color: 0xff3050, symbol: 'eye', life: Infinity, spin: 0.5, intensity: 2 });
+    } else if (!on && this.seal.circle) {
+      this.seal.circle.kill();
+      this.seal.circle = null;
+    }
     this.seal.on = on;
     this.seal.collider.enabled = on;
   }
@@ -1261,6 +1284,7 @@ export class World {
     l.flameMat.emissive.setHex(0x7ab8ff);
     l.flameMat.emissiveIntensity = 4;
     l.spot.intensity = 10;
+    l.circle = this.fx?.spawn({ pos: l.pos, radius: 2.2, color: 0x7ab8ff, symbol: 'flame', life: Infinity, spin: 0.3, alpha: 0.6, pulse: 0.35, intensity: 1.6 });
   }
 
   addPickup(kind, x, z, y = null) {
@@ -1287,6 +1311,7 @@ export class World {
 
   removePickup(pk) {
     pk.alive = false;
+    pk.circle?.kill();
     this.scene.remove(pk.mesh);
     if (pk.spot) this.lightSpots = this.lightSpots.filter((s) => s !== pk.spot);
   }

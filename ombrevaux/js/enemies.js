@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { makeSkeleton, makeWerewolf, makeGargoyle, compactModel } from './models.js';
+import { makeSkeleton, makeWerewolf, makeGargoyle, compactModel, addRim } from './models.js';
 import { ELEMENT_MULT, COL } from './spells.js';
 import { angleLerp, clamp } from './utils.js';
 
@@ -46,7 +46,13 @@ export class Enemy {
     else if (type === 'wolf' || type === 'alpha') this.m = makeWerewolf(type === 'alpha');
     else this.m = makeGargoyle();
     compactModel(this.m.root);
+    const rim = { skeleton: [0x8aa0d0, 0.5], archer: [0x8aa0d0, 0.5], wolf: [0x7a88b0, 0.45], alpha: [0xb0a0c0, 0.5], gargoyle: [0x8a90b0, 0.4] }[type];
+    addRim(this.m.root, rim[0], rim[1]);
     if (T.scale) this.m.root.scale.setScalar(T.scale);
+    if (type === 'wolf' || type === 'alpha') {
+      this.eyeTrail = game.trails.create({ color: type === 'alpha' ? 0xff2020 : 0xffb21a, width: type === 'alpha' ? 0.12 : 0.07, length: 12, intensity: 3 });
+      this.eyePos = new THREE.Vector3();
+    }
     game.scene.add(this.m.root);
     this.mats = [];
     // Seules les grandes pièces projettent une ombre (moins d'appels de dessin).
@@ -113,6 +119,18 @@ export class Enemy {
   die() {
     this.state = 'dying';
     this.dieT = 0;
+    this.eyeTrail?.detach();
+    const c = this.center();
+    const g = this.game;
+    // Les squelettes éclatent en os, les gargouilles s'effritent.
+    if (this.kind === 'undead') {
+      g.debris.burst(c, [['skull', 'bone'], ['bone', 'bone'], ['rib', 'bone'], ['bone', 'bone']], 9, { speed: 5 });
+      this.m.root.visible = false;
+      g.particles.burst(c, 12, new THREE.Color(0xff3b1f), { speed: 2, size: 0.25, life: 0.6, intensity: 2.5 });
+    } else if (this.kind === 'stone') {
+      g.debris.burst(c, [['stone', 'stone'], ['shard', 'stone']], 12, { speed: 6 });
+      this.m.root.visible = false;
+    }
     this.game.onEnemyKilled(this);
   }
 
@@ -301,6 +319,10 @@ export class Enemy {
     this.pos.y = g.world.getHeight(this.pos.x, this.pos.z);
     this.animate(dt);
     this.sync();
+    if (this.eyeTrail) {
+      this.m.root.updateMatrixWorld(true);
+      this.eyeTrail.push(this.m.head.localToWorld(this.eyePos.set(0, 0.15, 0.2)));
+    }
   }
 
   strike(d) {
@@ -314,7 +336,7 @@ export class Enemy {
       const dir = to.sub(from).normalize();
       g.combat.spawn({
         owner: 'enemy', pos: from, vel: dir.multiplyScalar(22), radius: 0.25, dmg: T.dmg, color: new THREE.Color(0xff7050),
-        size: 0.15, life: 2.2, shape: 'arrow', bright: 2,
+        size: 0.15, life: 2.2, shape: 'arrow', bright: 2, trailFx: { color: 0xff6040, width: 0.05, length: 10, intensity: 2.5 },
         trail: (p) => g.particles.emit(p.x, p.y, p.z, 0, 0, 0, new THREE.Color(0xff5030), 0.25, 0.2, { intensity: 1.5 }),
       });
       this.state = 'recover'; this.timer = 0.4;
@@ -389,13 +411,24 @@ export class Enemy {
     this.dieT += dt;
     const k = Math.min(1, this.dieT / 0.6);
     if (this.kind === 'undead') {
-      m.root.rotation.x = -k * 1.4;
-      m.root.position.y = this.pos.y - k * 0.4;
       if (this.dieT < 0.05) this.game.particles.burst(this.center(), 30, COL.bone, { speed: 4, size: 0.25, life: 0.8, gravity: 9 });
+      if (this.dieT > 0.3) { this.alive = false; this.game.scene.remove(m.root); }
+      return;
     } else if (this.kind === 'beast') {
       m.root.rotation.z = k * 1.5;
       m.root.position.y = this.pos.y + this.fly * (1 - k);
+      // Le corps se consume en cendres et en braises.
+      if (this.dieT > 0.8) {
+        const c = this.center();
+        const s = this.T.scale ?? 1;
+        for (let i = 0; i < 3; i++) {
+          this.game.smoke.emit(c.x + (Math.random() - 0.5) * s, c.y - 0.6 + Math.random() * 0.4, c.z + (Math.random() - 0.5) * s, (Math.random() - 0.5) * 0.6, 0.8 + Math.random(), (Math.random() - 0.5) * 0.6, new THREE.Color(0x1a1614), 0.5 * s, 1.4, { sizeEnd: 1.2 * s, drag: 0.5, alpha: 0.8 });
+          if (Math.random() < 0.5) this.game.particles.emit(c.x + (Math.random() - 0.5) * s, c.y - 0.5, c.z + (Math.random() - 0.5) * s, (Math.random() - 0.5), 1.5 + Math.random(), (Math.random() - 0.5), new THREE.Color(0xff6a20), 0.12, 1.2, { intensity: 3 });
+        }
+      }
     } else {
+      if (this.dieT > 0.3) { this.alive = false; this.game.scene.remove(m.root); }
+      return;
       this.fly = Math.max(0, this.fly - dt * 6);
       m.root.position.y = this.pos.y + this.fly;
       if (this.dieT < 0.6 && Math.random() < 0.6) this.game.smoke.burst(this.center(), 3, new THREE.Color(0x6b6a66), { speed: 4, size: 0.4, life: 0.8, gravity: 9, alpha: 0.9 });
@@ -409,6 +442,7 @@ export class Enemy {
   }
 
   remove() {
+    this.eyeTrail?.detach();
     this.alive = false;
     this.game.scene.remove(this.m.root);
   }

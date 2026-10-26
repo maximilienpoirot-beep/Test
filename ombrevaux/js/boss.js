@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { makeSeraphine, compactModel } from './models.js';
+import { makeSeraphine, compactModel, addRim } from './models.js';
 import { ELEMENT_MULT } from './spells.js';
 import { angleLerp } from './utils.js';
 
@@ -12,6 +12,7 @@ export class Boss {
     this.game = game;
     this.m = makeSeraphine();
     compactModel(this.m.root);
+    addRim(this.m.root, 0xffd8a0, 0.6);
     this.m.root.scale.setScalar(1.35);
     game.scene.add(this.m.root);
     this.name = 'Séraphine, l\'Ange de la Rosace';
@@ -39,6 +40,8 @@ export class Boss {
     this.deathT = 0;
     this.summoned = [];
     this.phaseShown = 1;
+    this.circle?.kill();
+    this.circle = null;
     this.m.root.visible = true;
     this.m.root.scale.setScalar(1.35);
     this.m.haloMat.emissive.setHex(0xffd27a);
@@ -52,6 +55,8 @@ export class Boss {
 
   start() {
     this.active = true;
+    this.circle?.kill();
+    this.circle = this.game.circles.spawn({ follow: this.pos, radius: 9, color: 0xffd27a, symbol: 'eye', life: Infinity, spin: 0.4, alpha: 0.75, intensity: 1.6 });
     this.actionT = 2.0;
   }
 
@@ -78,6 +83,7 @@ export class Boss {
 
   startDeath() {
     this.dying = true;
+    this.circle?.kill();
     this.deathT = 0;
     this.action = null;
     this.game.combat.clearHostile();
@@ -111,6 +117,7 @@ export class Boss {
       this.action = { type: 'roar', t: 0, dur: 2.2 };
       g.onBossPhase(newPhase);
       if (newPhase === 3) m.haloMat.emissive.setHex(0xff2040);
+      this.circle?.setColor(newPhase === 3 ? 0xff3050 : newPhase === 2 ? 0xc070ff : 0xffd27a, 1.6);
     }
 
     if (!pl.dead) this.facing = angleLerp(this.facing, Math.atan2(pl.pos.x - this.pos.x, pl.pos.z - this.pos.z), 1 - Math.exp(-3 * dt));
@@ -247,7 +254,7 @@ export class Boss {
     const g = this.game;
     const c = new THREE.Color(color);
     g.combat.spawn({
-      owner: 'enemy', pos, vel, radius: 0.35, dmg: 12, color: c, size: 0.22, life: 3, shape: 'shard', bright: 2.5,
+      owner: 'enemy', pos, vel, radius: 0.35, dmg: 12, color: c, size: 0.22, life: 3, shape: 'shard', bright: 2.5, trailFx: { color, width: 0.14, length: 9, intensity: 2.2 },
       trail: (p) => { if (Math.random() < 0.5) g.particles.emit(p.x, p.y, p.z, 0, 0, 0, c, 0.3, 0.25, { intensity: 2 }); },
       onHit: (p) => g.particles.burst(p, 8, c, { speed: 3, size: 0.25, life: 0.3, intensity: 2 }),
     });
@@ -257,7 +264,7 @@ export class Boss {
     const g = this.game;
     const c = new THREE.Color(color);
     g.combat.spawn({
-      owner: 'enemy', pos, vel, radius: 0.4, dmg: 10, color: c, size: 0.3, life: 5, bright: 2.5,
+      owner: 'enemy', pos, vel, radius: 0.4, dmg: 10, color: c, size: 0.3, life: 5, bright: 2.5, trailFx: { color, width: 0.22, length: 8, intensity: 1.8 },
       trail: (p) => { if (Math.random() < 0.4) g.particles.emit(p.x, p.y, p.z, 0, 0.3, 0, c, 0.4, 0.3, { intensity: 1.8 }); },
       onHit: (p) => g.particles.burst(p, 8, c, { speed: 3, size: 0.25, life: 0.3, intensity: 2 }),
     });
@@ -270,15 +277,19 @@ export class Boss {
       const pl = g.player;
       const beam = new THREE.Mesh(
         new THREE.CylinderGeometry(radius * 0.8, radius, 30, 16, 1, true),
-        new THREE.MeshBasicMaterial({ color: new THREE.Color(0xfff0c0).multiplyScalar(1.6), transparent: true, opacity: 0.7, side: THREE.FrontSide, depthWrite: false, blending: THREE.AdditiveBlending }),
+        new THREE.MeshBasicMaterial({ color: new THREE.Color(0xfff0c0).multiplyScalar(1.3), transparent: true, opacity: 0.45, side: THREE.FrontSide, depthWrite: false, blending: THREE.AdditiveBlending }),
       );
       beam.position.set(pos.x, pos.y + 15, pos.z);
       g.scene.add(beam);
       let life = 0.45;
       g.extraUpdates.push((dt) => {
         life -= dt;
-        beam.material.opacity = Math.max(0, life / 0.45) * 0.7;
         beam.scale.x = beam.scale.z = 1 + (0.45 - life);
+        // Atténué quand la caméra est tout près, pour ne pas aveugler.
+        const cam = g.camera.position;
+        const dc = Math.hypot(cam.x - pos.x, cam.z - pos.z) - radius * beam.scale.x;
+        const near = Math.min(1, Math.max(0.12, dc / 6));
+        beam.material.opacity = Math.max(0, life / 0.45) * 0.45 * near;
         if (life <= 0) { g.scene.remove(beam); beam.geometry.dispose(); return false; }
         return true;
       });

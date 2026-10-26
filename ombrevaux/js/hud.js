@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { SPELLS } from './player.js';
 import { PATH } from './world.js';
+import { circleDataURL } from './circles.js';
+
+const SPELL_CSS = { arcane: '#b48cff', holy: '#ffd27a', lightning: '#8fd0ff', shadow: '#9a76ff' };
 
 export const ICONS = {
   arcane: `<svg viewBox="0 0 40 40"><g fill="none" stroke="#c9a8ff" stroke-width="2"><path d="M20 3 L23 17 L37 20 L23 23 L20 37 L17 23 L3 20 L17 17 Z" fill="rgba(160,112,255,.35)"/><circle cx="20" cy="20" r="5"/></g></svg>`,
@@ -47,7 +50,8 @@ export class HUD {
       const s = SPELLS[k];
       const el = document.createElement('div');
       el.className = 'slot' + (k === 'shadow' ? ' sep' : '');
-      el.innerHTML = `${ICONS[k]}<span class="key">${k === 'shadow' ? '␣' : s.slot}</span><span class="cost">${s.mana}</span><div class="cd"></div>`;
+      el.style.setProperty('--spell', SPELL_CSS[k]);
+      el.innerHTML = `<div class="sigil" style="background-image:url(${circleDataURL(SPELL_CSS[k], k, 160)})"></div>${ICONS[k]}<span class="key">${k === 'shadow' ? '␣' : s.slot}</span><span class="cost">${s.mana}</span><div class="cd"></div>`;
       el.title = s.name;
       bar.appendChild(el);
       this.slots[k] = { el, cd: el.querySelector('.cd') };
@@ -55,6 +59,25 @@ export class HUD {
   }
 
   show(v) { this.root.classList.toggle('hidden', !v); }
+
+  // Décors runiques de l'interface, générés depuis les mêmes cercles que le jeu.
+  decorate() {
+    const gold = '#d9b45a';
+    this.$('#mm-ring').src = circleDataURL(gold, 'star', 480, 'outer');
+    this.crosshair.innerHTML = `<svg viewBox="0 0 64 64"><g fill="none" stroke="currentColor">
+      <circle cx="32" cy="32" r="20" stroke-width="1.2" stroke-dasharray="3 2.2" opacity=".75"/>
+      <circle cx="32" cy="32" r="14" stroke-width="1"/>
+      <path d="M32 6v10M32 48v10M6 32h10M48 32h10" stroke-width="1.6"/>
+      <path d="M32 22l2.5 10L32 42l-2.5-10z" stroke-width="1" opacity=".8"/>
+      </g><circle cx="32" cy="32" r="1.6" fill="currentColor"/></svg>`;
+    for (const [sel, col, sym] of [['#title .sigil-a', '#8a6cff', 'star'], ['#death .sigil-a', '#c0202e', 'eye'], ['#victory .sigil-a', '#ffd27a', 'holy'], ['#pause .sigil-a', '#6a5aa8', 'moon']]) {
+      const el = this.$(sel);
+      if (!el) continue;
+      el.querySelector('.l1').src = circleDataURL(col, sym, 900, 'outer');
+      el.querySelector('.l2').src = circleDataURL(col, sym, 700, 'mid');
+      el.querySelector('.l3').src = circleDataURL(col, sym, 420, 'center');
+    }
+  }
 
   setObjective(text) {
     if (this.objText.textContent === text) return;
@@ -161,6 +184,8 @@ export class HUD {
     const low = hpR < 0.3 && !p.dead ? 0.35 + Math.sin(performance.now() / 250) * 0.15 : 0;
     this.hurtEl.style.opacity = Math.max(this.hurtV, low);
     this.crosshair.classList.toggle('target', !!g.aimTarget);
+    this.crosshair.style.color = g.aimTarget ? '#ff7060' : SPELL_CSS[p.selected];
+    this.crosshair.classList.toggle('pulse', p.castAnim > 0.6);
 
     // Chiffres de dégâts
     const v = new THREE.Vector3();
