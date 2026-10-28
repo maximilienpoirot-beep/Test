@@ -121,6 +121,39 @@ python rotation_backtest.py --daily-exit       # sortir dès que BTC casse sa mo
 
 Limite : l'univers est choisi aujourd'hui, donc il ne contient pas les cryptos qui se sont effondrées entre-temps. Ça embellit le résultat.
 
+## Le bot survivant (memecoins, mode papier)
+
+`survivor_bot.py` gère une poche de 100 $ fictifs sur 25 memecoins Binance, seul, jour et nuit. Son capital est sa **barre de vie**.
+
+- **Il attaque** quand un memecoin prend +30 % en 24 h avec un volume de l'heure égal à 5 fois la moyenne des 7 derniers jours.
+- **Il sort** au stop de départ (−20 %), vend la moitié quand le prix double, puis suit le reste avec un stop à 30 % sous le plus haut.
+
+| État | PV | Comportement |
+|---|---|---|
+| 💚 En forme | 70 et plus | mise 30 % de ses PV, 3 attaques max |
+| 💛 Blessé | 50 à 70 | mise 20 %, 2 attaques max |
+| 🧡 Survie | 25 à 50 | mise 10 %, 1 attaque |
+| ❤️‍🩹 Critique | 10 à 25 | hibernation 7 jours, puis reprise prudente |
+| 💀 Mort | moins de 10 | arrêt définitif et autopsie |
+
+S'y ajoutent :
+- **Sonné :** après 3 défaites d'affilée, 24 h de repos.
+- **Récupération :** il attend 72 h avant de retourner sur un memecoin qu'il vient de quitter.
+- **Coffre :** à 150 PV, il met 50 $ à l'abri, définitivement.
+
+Les réglages sont figés dans `survivor.py` : ne les retouche pas pendant l'arène.
+
+```bash
+python survivor_backtest.py   # 70 vies d'un an depuis 2020, avec et sans barre de vie
+python survivor_bot.py        # le bot, en mode papier
+```
+
+Commandes Telegram : `/pv`, `/historique`, `/pause`, `/reprendre`, `/fermer_tout`, `/renaitre`.
+
+Il doit tourner sans interruption pour surveiller ses positions. Un Codespace s'endort après 30 minutes d'inactivité ; il lui faut donc une machine allumée en permanence.
+
+Un même token Telegram ne peut servir qu'à un seul programme à la fois. Pour faire tourner `bot.py` et `survivor_bot.py` ensemble, crée un 2e bot avec @BotFather (`SURVIVOR_TELEGRAM_TOKEN`).
+
 ## Tests
 
 ```bash

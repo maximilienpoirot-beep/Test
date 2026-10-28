@@ -53,7 +53,9 @@ RULES = [
 def fetch_hourly(coin: str) -> pd.DataFrame:
     path = f"data/hourly/{coin}_USDT.csv"
     if os.path.exists(path):
-        return pd.read_csv(path, index_col=0, parse_dates=True)
+        df = pd.read_csv(path, index_col=0)
+        df.index = pd.to_datetime(df.index, utc=True)
+        return df
     rows, start = [], 0
     while True:
         url = f"{API}?symbol={urllib.parse.quote(coin + 'USDT')}&interval=1h&startTime={start}&limit=1000"
