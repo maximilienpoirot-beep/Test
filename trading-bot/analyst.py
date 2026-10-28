@@ -49,8 +49,9 @@ class Analyst:
         prompt = (
             f"Signal {signal.side.upper()} sur {signal.symbol} ({timeframe})\n"
             f"Prix d'entrée : {signal.price:.6g}\n"
-            f"Stop-loss : {signal.stop_loss:.6g} | Objectif : {signal.take_profit:.6g} "
-            f"(R/R {signal.risk_reward:.1f})\n"
+            f"Stop-loss : {signal.stop_loss:.6g} (risque {signal.risk_pct:.2f} %)\n"
+            f"Sortie : pas d'objectif fixe, stop remonté au prix d'entrée puis stop suiveur en ATR "
+            f"(le trade vit tant que la tendance tient)\n"
             f"Déclencheurs : {'; '.join(signal.reasons)}\n\n"
             f"Dernières bougies clôturées (CSV) :\n{_format_candles(df)}"
         )

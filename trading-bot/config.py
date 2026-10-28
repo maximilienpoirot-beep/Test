@@ -52,8 +52,10 @@ class Config:
     volume_mult: float
     atr_period: int
     sl_atr: float
-    tp_atr: float
+    trail_atr: float
+    breakeven_r: float
     allow_short: bool
+    min_risk_fee_mult: float
 
     # Gestion du risque
     paper_balance: float
@@ -62,6 +64,8 @@ class Config:
     max_open_positions: int
     max_daily_loss_usdt: float
     fee_pct: float
+    exchange_stops: bool
+    stop_update_atr: float
 
     # Alertes
     alert_ttl: int
@@ -76,6 +80,7 @@ class Config:
     claude_model: str
 
     state_file: str
+    journal_file: str
 
     @property
     def live(self) -> bool:
@@ -99,7 +104,7 @@ def load_config(require_telegram: bool = True) -> Config:
         api_secret=_str("EXCHANGE_API_SECRET"),
         sandbox=_bool("EXCHANGE_SANDBOX", False),
         symbols=symbols,
-        timeframe=_str("TIMEFRAME", "5m"),
+        timeframe=_str("TIMEFRAME", "15m"),
         scan_interval=_int("SCAN_INTERVAL", 30),
         ema_fast=_int("EMA_FAST", 9),
         ema_slow=_int("EMA_SLOW", 21),
@@ -109,14 +114,18 @@ def load_config(require_telegram: bool = True) -> Config:
         volume_mult=_float("VOLUME_MULT", 1.2),
         atr_period=_int("ATR_PERIOD", 14),
         sl_atr=_float("SL_ATR", 1.5),
-        tp_atr=_float("TP_ATR", 3.0),
+        trail_atr=_float("TRAIL_ATR", 2.5),
+        breakeven_r=_float("BREAKEVEN_R", 1.0),
         allow_short=_bool("ALLOW_SHORT", False),
+        min_risk_fee_mult=_float("MIN_RISK_FEE_MULT", 2.5),
         paper_balance=_float("PAPER_BALANCE", 1000),
         risk_per_trade_pct=_float("RISK_PER_TRADE_PCT", 1.0),
         max_position_usdt=_float("MAX_POSITION_USDT", 200),
         max_open_positions=_int("MAX_OPEN_POSITIONS", 3),
         max_daily_loss_usdt=_float("MAX_DAILY_LOSS_USDT", 50),
         fee_pct=_float("FEE_PCT", 0.1),
+        exchange_stops=_bool("EXCHANGE_STOPS", True),
+        stop_update_atr=_float("STOP_UPDATE_ATR", 0.25),
         alert_ttl=_int("ALERT_TTL", 180),
         max_slippage_pct=_float("MAX_SLIPPAGE_PCT", 0.3),
         telegram_token=_str("TELEGRAM_TOKEN"),
@@ -124,6 +133,7 @@ def load_config(require_telegram: bool = True) -> Config:
         claude_enabled=_bool("CLAUDE_ENABLED", True),
         claude_model=_str("CLAUDE_MODEL", "claude-opus-5-5"),
         state_file=_str("STATE_FILE", "data/state.json"),
+        journal_file=_str("JOURNAL_FILE", "data/journal.json"),
     )
 
     if require_telegram and (not cfg.telegram_token or not cfg.telegram_chat_id):

@@ -5,9 +5,12 @@ import json
 import logging
 import os
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime, timezone
 
+import ccxt
+
+from exits import ExitParams, exit_reason, is_stop_hit, next_stop
 from strategy import Signal
 
 log = logging.getLogger(__name__)
@@ -20,14 +23,26 @@ class Position:
     side: str
     qty: float
     entry_price: float
-    stop_loss: float
-    take_profit: float
+    stop_loss: float  # stop actuel (remonte avec le point mort et le stop suiveur)
     entry_fee: float
     opened_at: str
+    initial_stop: float = 0.0
+    atr: float = 0.0  # ATR au moment du signal, sert au stop suiveur
+    extreme: float = 0.0  # plus haut (long) ou plus bas (short) depuis l'entrée
+    stop_order_id: str | None = None  # stop posé sur l'exchange (mode live)
+    stop_order_price: float = 0.0
+
+    def __post_init__(self):
+        self.initial_stop = self.initial_stop or self.stop_loss
+        self.extreme = self.extreme or self.entry_price
 
     @property
     def notional(self) -> float:
         return self.qty * self.entry_price
+
+    @property
+    def close_side(self) -> str:
+        return "sell" if self.side == "long" else "buy"
 
     def unrealized_pnl(self, price: float) -> float:
         direction = 1 if self.side == "long" else -1
@@ -48,6 +63,17 @@ class ClosedTrade:
 
 
 @dataclass
+class UpdateResult:
+    closed: list[ClosedTrade] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+
+
+def _only_fields(cls, raw: dict) -> dict:
+    names = {f.name for f in fields(cls)}
+    return {k: v for k, v in raw.items() if k in names}
+
+
+@dataclass
 class State:
     equity: float  # capital de départ + PnL réalisé (mode papier)
     positions: dict[str, Position] = field(default_factory=dict)
@@ -63,8 +89,8 @@ class State:
             raw = json.load(f)
         return cls(
             equity=raw["equity"],
-            positions={k: Position(**v) for k, v in raw.get("positions", {}).items()},
-            history=[ClosedTrade(**t) for t in raw.get("history", [])],
+            positions={k: Position(**_only_fields(Position, v)) for k, v in raw.get("positions", {}).items()},
+            history=[ClosedTrade(**_only_fields(ClosedTrade, t)) for t in raw.get("history", [])],
             daily_pnl=raw.get("daily_pnl", {}),
             paused=raw.get("paused", False),
         )
@@ -97,8 +123,13 @@ class Broker:
     def __init__(self, cfg, exchange):
         self.cfg = cfg
         self.exchange = exchange
+        self.exit_params = ExitParams(cfg.trail_atr, cfg.breakeven_r)
         self.state = State.load(cfg.state_file, cfg.paper_balance)
         self._lock = asyncio.Lock()
+
+    @property
+    def uses_exchange_stops(self) -> bool:
+        return self.cfg.live and self.cfg.exchange_stops
 
     # --- Lecture ---------------------------------------------------------
 
@@ -149,18 +180,20 @@ class Broker:
     # --- Exécution -------------------------------------------------------
 
     async def open(self, signal: Signal, price: float) -> Position:
+        """Ouvre la position. En live, pose aussi le stop sur l'exchange ; si c'est impossible,
+        la position est ouverte quand même et `stop_order_id` reste vide (le bot gère alors le stop)."""
         async with self._lock:
             reason = self.risk_block_reason(signal)
             if reason:
                 raise RuntimeError(reason)
 
-            # Le stop et l'objectif gardent la même distance qu'au moment du signal
+            # Le stop garde la même distance qu'au moment du signal
             sl = price - (signal.price - signal.stop_loss)
-            tp = price + (signal.take_profit - signal.price)
             qty = self.size(await self.equity(), price, sl)
 
             if self.cfg.live:
-                qty, price, fee = await self._live_order(signal.symbol, "buy" if signal.side == "long" else "sell", qty)
+                qty, price, fee = await self._market_order(signal.symbol, "buy" if signal.side == "long" else "sell", qty)
+                sl = price - (signal.price - signal.stop_loss)
             else:
                 fee = qty * price * self.cfg.fee_pct / 100
             if qty <= 0:
@@ -173,10 +206,12 @@ class Broker:
                 qty=qty,
                 entry_price=price,
                 stop_loss=sl,
-                take_profit=tp,
                 entry_fee=fee,
                 opened_at=_now().isoformat(timespec="seconds"),
+                atr=signal.atr,
             )
+            if self.uses_exchange_stops:
+                await self._place_stop(pos)
             self.state.positions[pos.id] = pos
             self.save()
             log.info("Position ouverte %s", pos)
@@ -189,47 +224,130 @@ class Broker:
                 raise RuntimeError("position introuvable (déjà fermée ?)")
 
             if self.cfg.live:
-                _, price, exit_fee = await self._live_order(pos.symbol, "sell" if pos.side == "long" else "buy", pos.qty)
+                filled_stop = await self._cancel_stop(pos)
+                if filled_stop is not None:
+                    # Le stop de l'exchange a été exécuté juste avant : la position est déjà fermée
+                    _, avg, fee = self._fill(filled_stop, pos.symbol, pos.close_side)
+                    return self._record_close(pos, avg, fee, exit_reason(pos.side, pos.entry_price, pos.stop_order_price))
+                _, price, exit_fee = await self._market_order(pos.symbol, pos.close_side, pos.qty)
             else:
                 exit_fee = pos.qty * price * self.cfg.fee_pct / 100
+            return self._record_close(pos, price, exit_fee, reason)
 
-            pnl = pos.unrealized_pnl(price) - exit_fee
-            trade = ClosedTrade(
-                symbol=pos.symbol,
-                side=pos.side,
-                qty=pos.qty,
-                entry_price=pos.entry_price,
-                exit_price=price,
-                pnl=pnl,
-                reason=reason,
-                opened_at=pos.opened_at,
-                closed_at=_now().isoformat(timespec="seconds"),
-            )
-            del self.state.positions[pos_id]
-            self.state.history.append(trade)
-            self.state.equity += pnl
-            day = _now().date().isoformat()
-            self.state.daily_pnl[day] = self.state.daily_pnl.get(day, 0.0) + pnl
+    async def update(self, symbol: str, price: float) -> UpdateResult:
+        """À appeler à chaque relevé de prix : fait suivre le stop et ferme les positions touchées."""
+        result = UpdateResult()
+        for pos in [p for p in self.state.positions.values() if p.symbol == symbol]:
+            try:
+                await self._update_position(pos, price, result)
+            except ccxt.NetworkError as e:
+                log.warning("%s : erreur réseau pendant le suivi : %s", pos.symbol, e)
+            except Exception:
+                log.exception("Échec du suivi de la position %s", pos.id)
+        return result
+
+    async def _update_position(self, pos: Position, price: float, result: UpdateResult) -> None:
+        # 1. En live, le stop de l'exchange a peut-être déjà été exécuté
+        if self.uses_exchange_stops and pos.stop_order_id:
+            async with self._lock:
+                order = await asyncio.to_thread(self.exchange.fetch_order, pos.stop_order_id, pos.symbol)
+                status = order.get("status")
+                if status == "closed":
+                    _, avg, fee = self._fill(order, pos.symbol, pos.close_side)
+                    result.closed.append(self._record_close(pos, avg, fee, exit_reason(pos.side, pos.entry_price, pos.stop_order_price)))
+                    return
+                if status in ("canceled", "expired", "rejected"):
+                    pos.stop_order_id = None
+                    result.notes.append(f"⚠️ Le stop de {pos.symbol} a été annulé sur l'exchange : le bot le surveille lui-même.")
+                    self.save()
+
+        # 2. Stop touché alors qu'il n'est pas posé sur l'exchange : le bot ferme lui-même
+        if not pos.stop_order_id and is_stop_hit(pos.side, pos.stop_loss, price):
+            reason = exit_reason(pos.side, pos.entry_price, pos.stop_loss)
+            result.closed.append(await self.close(pos.id, price, reason))
+            return
+
+        # 3. Nouveau plus haut (ou plus bas) : le stop suit
+        pos.extreme = max(pos.extreme, price) if pos.side == "long" else min(pos.extreme, price)
+        new_stop = next_stop(pos.side, pos.entry_price, pos.initial_stop, pos.atr, pos.extreme, pos.stop_loss, self.exit_params)
+        if new_stop == pos.stop_loss:
             self.save()
-            log.info("Position fermée %s", trade)
-            return trade
+            return
 
-    async def check_exits(self, symbol: str, price: float) -> list[ClosedTrade]:
-        """Ferme les positions de `symbol` dont le stop-loss ou l'objectif est atteint."""
-        closed = []
-        for pos in list(self.state.positions.values()):
-            if pos.symbol != symbol:
-                continue
-            hit_sl = price <= pos.stop_loss if pos.side == "long" else price >= pos.stop_loss
-            hit_tp = price >= pos.take_profit if pos.side == "long" else price <= pos.take_profit
-            if hit_sl or hit_tp:
-                try:
-                    closed.append(await self.close(pos.id, price, "stop-loss" if hit_sl else "objectif"))
-                except Exception:
-                    log.exception("Échec de la fermeture automatique de %s", pos.id)
-        return closed
+        direction = 1 if pos.side == "long" else -1
+        reached_breakeven = direction * (pos.stop_loss - pos.entry_price) < 0 <= direction * (new_stop - pos.entry_price)
+        pos.stop_loss = new_stop
+        if reached_breakeven:
+            result.notes.append(f"🔐 {pos.symbol} : stop remonté au prix d'entrée, le trade ne peut plus perdre (hors frais).")
 
-    async def _live_order(self, symbol: str, side: str, qty: float) -> tuple[float, float, float]:
+        if self.uses_exchange_stops and pos.stop_order_id:
+            moved = abs(new_stop - pos.stop_order_price)
+            if moved >= self.cfg.stop_update_atr * pos.atr or reached_breakeven:
+                async with self._lock:
+                    filled = await self._cancel_stop(pos)
+                    if filled is not None:
+                        _, avg, fee = self._fill(filled, pos.symbol, pos.close_side)
+                        result.closed.append(self._record_close(pos, avg, fee, exit_reason(pos.side, pos.entry_price, pos.stop_order_price)))
+                        return
+                    if not await self._place_stop(pos):
+                        result.notes.append(f"⚠️ Impossible de déplacer le stop de {pos.symbol} sur l'exchange : le bot le surveille lui-même.")
+        self.save()
+
+    def _record_close(self, pos: Position, price: float, exit_fee: float, reason: str) -> ClosedTrade:
+        pnl = pos.unrealized_pnl(price) - exit_fee
+        trade = ClosedTrade(
+            symbol=pos.symbol,
+            side=pos.side,
+            qty=pos.qty,
+            entry_price=pos.entry_price,
+            exit_price=price,
+            pnl=pnl,
+            reason=reason,
+            opened_at=pos.opened_at,
+            closed_at=_now().isoformat(timespec="seconds"),
+        )
+        self.state.positions.pop(pos.id, None)
+        self.state.history.append(trade)
+        self.state.equity += pnl
+        day = _now().date().isoformat()
+        self.state.daily_pnl[day] = self.state.daily_pnl.get(day, 0.0) + pnl
+        self.save()
+        log.info("Position fermée %s", trade)
+        return trade
+
+    # --- Ordres réels ----------------------------------------------------
+
+    async def _place_stop(self, pos: Position) -> bool:
+        """Pose un ordre stop-loss au marché sur l'exchange. Renvoie False si l'exchange refuse."""
+        try:
+            amount = float(self.exchange.amount_to_precision(pos.symbol, pos.qty))
+            stop = float(self.exchange.price_to_precision(pos.symbol, pos.stop_loss))
+            order = await asyncio.to_thread(
+                self.exchange.create_stop_loss_order, pos.symbol, "market", pos.close_side, amount, None, stop
+            )
+        except Exception as e:
+            log.error("Stop non posé sur l'exchange pour %s : %s", pos.symbol, e)
+            pos.stop_order_id = None
+            return False
+        pos.stop_order_id = order["id"]
+        pos.stop_order_price = stop
+        return True
+
+    async def _cancel_stop(self, pos: Position) -> dict | None:
+        """Annule le stop posé sur l'exchange. S'il a déjà été exécuté, renvoie l'ordre exécuté."""
+        if not pos.stop_order_id:
+            return None
+        order_id = pos.stop_order_id
+        try:
+            await asyncio.to_thread(self.exchange.cancel_order, order_id, pos.symbol)
+            filled = None
+        except ccxt.OrderNotFound:
+            order = await asyncio.to_thread(self.exchange.fetch_order, order_id, pos.symbol)
+            filled = order if order.get("status") == "closed" else None
+        pos.stop_order_id = None
+        return filled
+
+    async def _market_order(self, symbol: str, side: str, qty: float) -> tuple[float, float, float]:
         """Ordre au marché réel. Renvoie (quantité exécutée, prix moyen, frais en devise de cotation)."""
         amount = float(self.exchange.amount_to_precision(symbol, qty))
         if amount <= 0:
@@ -237,6 +355,10 @@ class Broker:
         order = await asyncio.to_thread(self.exchange.create_order, symbol, "market", side, amount)
         if not order.get("average") or not order.get("filled"):
             order = await asyncio.to_thread(self.exchange.fetch_order, order["id"], symbol)
+        return self._fill(order, symbol, side)
+
+    @staticmethod
+    def _fill(order: dict, symbol: str, side: str) -> tuple[float, float, float]:
         filled = float(order["filled"])
         avg = float(order["average"])
         base, quote = symbol.split("/")

@@ -15,6 +15,7 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Cont
 from analyst import Analysis, Analyst
 from broker import Broker, ClosedTrade, Position
 from config import Config, load_config
+from journal import Journal
 from strategy import Signal, StrategyParams, add_indicators, ohlcv_to_df, signal_at
 
 logging.basicConfig(format="%(asctime)s %(levelname)s %(name)s: %(message)s", level=logging.INFO)
@@ -29,6 +30,7 @@ class PendingAlert:
     signal: Signal
     created: float
     message_id: int
+    record_id: str
 
 
 def make_exchange(cfg: Config) -> ccxt.Exchange:
@@ -50,14 +52,12 @@ def fmt(x: float) -> str:
 
 def format_alert(cfg: Config, sig: Signal, analysis: Analysis | None) -> str:
     icon = "📈" if sig.side == "long" else "📉"
-    sl_pct = abs(sig.price - sig.stop_loss) / sig.price * 100
-    tp_pct = abs(sig.take_profit - sig.price) / sig.price * 100
     lines = [
         f"{icon} <b>{sig.side.upper()} {html.escape(sig.symbol)}</b> ({cfg.timeframe})"
         + ("" if cfg.live else "  <i>[papier]</i>"),
         f"Entrée ≈ <code>{fmt(sig.price)}</code>",
-        f"Stop-loss <code>{fmt(sig.stop_loss)}</code> (−{sl_pct:.2f} %)",
-        f"Objectif <code>{fmt(sig.take_profit)}</code> (+{tp_pct:.2f} %)  · R/R {sig.risk_reward:.1f}",
+        f"Stop-loss <code>{fmt(sig.stop_loss)}</code> (−{sig.risk_pct:.2f} %)",
+        f"Sortie : stop au prix d'entrée dès +{cfg.breakeven_r:g} R, puis stop suiveur à {cfg.trail_atr:g} ATR",
         "",
         *[f"• {html.escape(r)}" for r in sig.reasons],
     ]
@@ -77,7 +77,8 @@ def format_alert(cfg: Config, sig: Signal, analysis: Analysis | None) -> str:
 def format_position(pos: Position, price: float | None = None) -> str:
     text = (
         f"<b>{pos.side.upper()} {html.escape(pos.symbol)}</b> · {fmt(pos.qty)} @ <code>{fmt(pos.entry_price)}</code>\n"
-        f"SL <code>{fmt(pos.stop_loss)}</code> · TP <code>{fmt(pos.take_profit)}</code>"
+        f"Stop <code>{fmt(pos.stop_loss)}</code>"
+        + (" (posé sur l'exchange)" if pos.stop_order_id else "")
     )
     if price is not None:
         text += f"\nPrix <code>{fmt(price)}</code> · PnL {pos.unrealized_pnl(price):+.2f} USDT"
@@ -102,6 +103,7 @@ class TradingBot:
         self.params = StrategyParams.from_config(cfg)
         self.exchange = make_exchange(cfg)
         self.broker = Broker(cfg, self.exchange)
+        self.journal = Journal(cfg.journal_file, self.broker.exit_params, cfg.fee_pct)
         self.analyst = Analyst(cfg.claude_model) if cfg.claude_enabled else None
         self.pending: dict[str, PendingAlert] = {}
         self.last_candle: dict[str, object] = {}
@@ -134,12 +136,16 @@ class TradingBot:
         df = ohlcv_to_df(ohlcv)
         last_price = float(df["close"].iloc[-1])
 
-        for trade in await self.broker.check_exits(symbol, last_price):
+        update = await self.broker.update(symbol, last_price)
+        for note in update.notes:
+            await self.send(app, note)
+        for trade in update.closed:
             await self.send(app, format_closed(trade))
             await self.warn_if_daily_limit(app)
 
         # La dernière bougie est en cours de formation : on ne regarde que les bougies clôturées
         closed = add_indicators(df.iloc[:-1], self.params)
+        self.journal.update(symbol, closed)
         candle_time = closed.index[-1]
         if self.last_candle.get(symbol) == candle_time:
             return
@@ -154,6 +160,7 @@ class TradingBot:
         blocked = self.broker.risk_block_reason(signal)
         if blocked:
             log.info("Signal %s %s ignoré : %s", signal.side, symbol, blocked)
+            self.journal.add(signal, "bloqué", blocked)
             return
 
         analysis = await self.analyst.analyze(signal, closed, self.cfg.timeframe) if self.analyst else None
@@ -164,14 +171,16 @@ class TradingBot:
                 InlineKeyboardButton("❌ Ignorer", callback_data=f"no:{alert_id}"),
             ]]
         )
+        record = self.journal.add(signal, analysis=analysis)
         msg = await self.send(app, format_alert(self.cfg, signal, analysis), markup)
-        self.pending[alert_id] = PendingAlert(signal, time.time(), msg.message_id)
+        self.pending[alert_id] = PendingAlert(signal, time.time(), msg.message_id, record.id)
 
     async def expire_alerts(self, app: Application) -> None:
         now = time.time()
         for alert_id, alert in list(self.pending.items()):
             if now - alert.created > self.cfg.alert_ttl:
                 del self.pending[alert_id]
+                self.journal.set_decision(alert.record_id, "expiré")
                 await self.edit_suffix(app, alert.message_id, "⌛ <i>Expirée</i>")
 
     async def edit_suffix(self, app: Application, message_id: int, suffix: str, markup=None) -> None:
@@ -226,6 +235,7 @@ class TradingBot:
 
         if action == "no":
             await query.answer("Ignorée")
+            self.journal.set_decision(alert.record_id, "ignoré")
             await self.edit_suffix(app, alert.message_id, "❌ <i>Ignorée</i>")
             return
 
@@ -241,10 +251,18 @@ class TradingBot:
                 raise RuntimeError("le prix a déjà dépassé le stop-loss")
             pos = await self.broker.open(sig, price)
         except Exception as e:
+            self.journal.set_decision(alert.record_id, "refusé", str(e))
             await self.edit_suffix(app, alert.message_id, f"⚠️ Non exécuté : {html.escape(str(e))}")
             return
+        self.journal.set_decision(alert.record_id, "validé")
         await self.edit_suffix(app, alert.message_id, "✅ <b>Position ouverte</b>\n" + format_position(pos))
         await self.send(app, format_position(pos), close_button(pos))
+        if self.broker.uses_exchange_stops and not pos.stop_order_id:
+            await self.send(
+                app,
+                "⚠️ L'exchange a refusé le stop-loss : c'est le bot qui le surveille. "
+                "S'il s'arrête, la position n'est plus protégée.",
+            )
 
     # --- Commandes -------------------------------------------------------
 
@@ -257,7 +275,8 @@ class TradingBot:
             "/pause : arrêter les alertes\n"
             "/reprendre : relancer les alertes\n"
             "/fermer_tout : fermer toutes les positions\n"
-            "/historique : derniers trades"
+            "/historique : derniers trades\n"
+            "/stats : résultats fictifs de tous les signaux (stratégie, tes choix, Claude)"
         )
 
     async def cmd_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -275,7 +294,7 @@ class TradingBot:
     async def cmd_pause(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         self.broker.state.paused = True
         self.broker.save()
-        await update.message.reply_text("⏸ Alertes en pause. Les stop-loss et objectifs restent surveillés.")
+        await update.message.reply_text("⏸ Alertes en pause. Les positions ouvertes et leurs stops restent suivis.")
 
     async def cmd_resume(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         self.broker.state.paused = False
@@ -293,6 +312,9 @@ class TradingBot:
                 await update.message.reply_html(format_closed(trade))
             except Exception as e:
                 await update.message.reply_text(f"⚠️ {pos.symbol} : {e}")
+
+    async def cmd_stats(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        await update.message.reply_html(self.journal.stats())
 
     async def cmd_history(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         trades = self.broker.state.history[-10:]
@@ -322,6 +344,7 @@ def main() -> None:
     app.add_handler(CommandHandler("reprendre", bot.cmd_resume, filters=me))
     app.add_handler(CommandHandler("fermer_tout", bot.cmd_close_all, filters=me))
     app.add_handler(CommandHandler("historique", bot.cmd_history, filters=me))
+    app.add_handler(CommandHandler("stats", bot.cmd_stats, filters=me))
     app.add_handler(CallbackQueryHandler(bot.on_button))
     app.job_queue.run_repeating(bot.scan, interval=cfg.scan_interval, first=1)
 

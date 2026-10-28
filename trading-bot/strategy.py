@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+from exits import ExitParams
+
 
 @dataclass(frozen=True)
 class StrategyParams:
@@ -16,12 +18,19 @@ class StrategyParams:
     volume_mult: float = 1.2
     atr_period: int = 14
     sl_atr: float = 1.5
-    tp_atr: float = 3.0
+    trail_atr: float = 2.5
+    breakeven_r: float = 1.0
     allow_short: bool = False
+    fee_pct: float = 0.1
+    min_risk_fee_mult: float = 2.5
 
     @classmethod
     def from_config(cls, cfg) -> "StrategyParams":
         return cls(**{name: getattr(cfg, name) for name in cls.__dataclass_fields__})
+
+    @property
+    def exits(self) -> ExitParams:
+        return ExitParams(self.trail_atr, self.breakeven_r)
 
     @property
     def warmup(self) -> int:
@@ -35,15 +44,14 @@ class Signal:
     side: str  # "long" ou "short"
     price: float
     stop_loss: float
-    take_profit: float
     atr: float
     adx: float
     candle_time: pd.Timestamp
     reasons: list[str] = field(default_factory=list)
 
     @property
-    def risk_reward(self) -> float:
-        return abs(self.take_profit - self.price) / abs(self.price - self.stop_loss)
+    def risk_pct(self) -> float:
+        return abs(self.price - self.stop_loss) / self.price * 100
 
 
 def ohlcv_to_df(ohlcv: list[list]) -> pd.DataFrame:
@@ -115,11 +123,12 @@ def signal_at(df: pd.DataFrame, i: int, symbol: str, p: StrategyParams) -> Signa
     if not row["volume"] >= p.volume_mult * row["vol_avg"]:
         return None
 
+    # Un mouvement trop petit par rapport aux frais n'a aucune chance d'être rentable
     distance = row["atr"] * p.sl_atr
-    if side == "long":
-        stop_loss, take_profit = price - distance, price + row["atr"] * p.tp_atr
-    else:
-        stop_loss, take_profit = price + distance, price - row["atr"] * p.tp_atr
+    round_trip_fees = 2 * p.fee_pct
+    if distance / price * 100 < p.min_risk_fee_mult * round_trip_fees:
+        return None
+    stop_loss = price - distance if side == "long" else price + distance
 
     trend_word = "au-dessus" if side == "long" else "en dessous"
     return Signal(
@@ -127,7 +136,6 @@ def signal_at(df: pd.DataFrame, i: int, symbol: str, p: StrategyParams) -> Signa
         side=side,
         price=float(price),
         stop_loss=float(stop_loss),
-        take_profit=float(take_profit),
         atr=float(row["atr"]),
         adx=float(row["adx"]),
         candle_time=df.index[i],
@@ -136,6 +144,7 @@ def signal_at(df: pd.DataFrame, i: int, symbol: str, p: StrategyParams) -> Signa
             f"Prix {trend_word} de l'EMA {p.ema_trend} (tendance de fond)",
             f"ADX {row['adx']:.0f} ≥ {p.adx_min:g} (tendance marquée)",
             f"Volume ×{row['volume'] / row['vol_avg']:.1f} par rapport à la moyenne",
+            f"Risque {distance / price * 100:.2f} % = {distance / price * 100 / round_trip_fees:.1f}× les frais aller-retour",
         ],
     )
 

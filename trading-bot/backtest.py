@@ -14,6 +14,7 @@ import ccxt
 import pandas as pd
 
 from config import load_config
+from exits import TradeTracker, exit_reason
 from strategy import StrategyParams, add_indicators, ohlcv_to_df, signal_at
 
 
@@ -25,6 +26,7 @@ class Trade:
     exit_time: pd.Timestamp
     exit: float
     pnl: float
+    r: float  # résultat net de frais, en multiples du risque initial
     reason: str
 
 
@@ -50,29 +52,29 @@ def run_backtest(
     balance: float = 1000,
     risk_pct: float = 1.0,
     max_position: float = 200,
-    fee_pct: float = 0.1,
 ) -> tuple[list[Trade], pd.Series]:
-    """Entrée à l'ouverture de la bougie suivant le signal ; si stop et objectif sont touchés
-    dans la même bougie, on compte le stop (hypothèse pessimiste)."""
+    """Entrée à l'ouverture de la bougie suivant le signal, puis mêmes règles de sortie que le bot
+    (stop initial, point mort, stop suiveur). Dans chaque bougie, le stop est vérifié avant
+    de profiter du plus haut : hypothèse prudente."""
     data = add_indicators(df, params)
     trades: list[Trade] = []
     equity = balance
     curve = []
-    pos = None  # (side, entry_time, entry, qty, sl, tp)
+    pos = None  # (tracker, entry_time, qty)
 
     for i in range(len(data)):
         row = data.iloc[i]
         if pos is not None:
-            side, t0, entry, qty, sl, tp = pos
-            hit_sl = row["low"] <= sl if side == "long" else row["high"] >= sl
-            hit_tp = row["high"] >= tp if side == "long" else row["low"] <= tp
-            if hit_sl or hit_tp:
-                exit_price = sl if hit_sl else tp
-                direction = 1 if side == "long" else -1
-                fees = (entry + exit_price) * qty * fee_pct / 100
-                pnl = direction * (exit_price - entry) * qty - fees
+            tracker, t0, qty = pos
+            exit_price = tracker.on_candle(row["open"], row["high"], row["low"], params.exits)
+            if exit_price is not None:
+                direction = 1 if tracker.side == "long" else -1
+                fees = (tracker.entry + exit_price) * qty * params.fee_pct / 100
+                pnl = direction * (exit_price - tracker.entry) * qty - fees
                 equity += pnl
-                trades.append(Trade(side, t0, entry, data.index[i], exit_price, pnl, "stop-loss" if hit_sl else "objectif"))
+                _, r = tracker.result(exit_price, params.fee_pct)
+                reason = exit_reason(tracker.side, tracker.entry, exit_price)
+                trades.append(Trade(tracker.side, t0, tracker.entry, data.index[i], exit_price, pnl, r, reason))
                 pos = None
         curve.append(equity)
 
@@ -81,9 +83,8 @@ def run_backtest(
             if sig:
                 entry = data.iloc[i + 1]["open"]
                 sl = entry - (sig.price - sig.stop_loss)
-                tp = entry + (sig.take_profit - sig.price)
                 qty = min(equity * risk_pct / 100 / abs(entry - sl), min(max_position, equity) / entry)
-                pos = (sig.side, data.index[i + 1], entry, qty, sl, tp)
+                pos = (TradeTracker.start(sig.side, entry, sl, sig.atr), data.index[i + 1], qty)
 
     return trades, pd.Series(curve, index=data.index)
 
@@ -92,18 +93,20 @@ def report(trades: list[Trade], curve: pd.Series, balance: float) -> str:
     if not trades:
         return "Aucun trade sur la période."
     pnls = pd.Series([t.pnl for t in trades])
+    rs = pd.Series([t.r for t in trades])
     gains, losses = pnls[pnls > 0].sum(), -pnls[pnls <= 0].sum()
     drawdown = (curve - curve.cummax()).min()
     days = max((curve.index[-1] - curve.index[0]).total_seconds() / 86400, 1e-9)
+    reasons = pd.Series([t.reason for t in trades]).value_counts()
     return "\n".join([
         f"Période        : {curve.index[0]:%Y-%m-%d} → {curve.index[-1]:%Y-%m-%d} ({days:.0f} j)",
         f"Trades         : {len(trades)} ({len(trades) / days:.1f}/jour)",
         f"Gagnants       : {(pnls > 0).mean() * 100:.0f} %",
         f"PnL total      : {pnls.sum():+.2f} USDT ({pnls.sum() / balance * 100:+.1f} %)",
-        f"Gain moyen     : {pnls[pnls > 0].mean() if (pnls > 0).any() else 0:+.2f} · "
-        f"Perte moyenne : {pnls[pnls <= 0].mean() if (pnls <= 0).any() else 0:+.2f}",
+        f"Par trade      : {rs.mean():+.2f} R en moyenne · meilleur {rs.max():+.1f} R · pire {rs.min():+.1f} R",
         f"Profit factor  : {gains / losses if losses else float('inf'):.2f}",
         f"Drawdown max   : {drawdown:.2f} USDT",
+        "Sorties        : " + " · ".join(f"{name} {count}" for name, count in reasons.items()),
     ])
 
 
@@ -129,9 +132,7 @@ def main() -> None:
         print(f"Données enregistrées dans {path}")
 
     params = StrategyParams.from_config(cfg)
-    trades, curve = run_backtest(
-        df, params, cfg.paper_balance, cfg.risk_per_trade_pct, cfg.max_position_usdt, cfg.fee_pct
-    )
+    trades, curve = run_backtest(df, params, cfg.paper_balance, cfg.risk_per_trade_pct, cfg.max_position_usdt)
     print(report(trades, curve, cfg.paper_balance))
 
 
