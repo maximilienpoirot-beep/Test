@@ -1,0 +1,16 @@
+{
+  "name": "Bot de trading",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "postCreateCommand": "pip install -r trading-bot/requirements.txt && cd trading-bot && ([ -f .env ] || cp .env.example .env)",
+  "customizations": {
+    "codespaces": {
+      "openFiles": ["trading-bot/.env"]
+    },
+    "vscode": {
+      "extensions": ["ms-python.python"],
+      "settings": {
+        "terminal.integrated.cwd": "${containerWorkspaceFolder}/trading-bot"
+      }
+    }
+  }
+}
