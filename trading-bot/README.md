@@ -99,6 +99,28 @@ Il faut au moins 50 trades terminés avant de tirer une conclusion.
 - Le capital pris en compte en live est le solde total de la devise de cotation (USDT par défaut). Toutes les paires doivent donc être cotées dans la même devise.
 - Les frais payés dans une autre devise (BNB par exemple) ne sont pas comptés dans le PnL.
 
+## Backtest de la rotation hebdomadaire
+
+`rotation_backtest.py` teste une autre approche, sans toucher au bot ni passer d'ordre. Chaque dimanche :
+
+1. **Filtre de marché :** on n'est investi que si BTC est au-dessus de sa moyenne 200 jours. Sinon, tout est en cash.
+2. **Classement :** on garde les 3 cryptos qui ont le plus monté sur 28 jours, si elles sont aussi au-dessus de leur propre moyenne 50 jours.
+3. **Taille :** plus une crypto est volatile, moins elle reçoit d'argent.
+
+Le script compare la rotation à « garder du BTC » et à « BTC avec le seul filtre de marché ». Cette deuxième référence montre ce qu'apporte la rotation elle-même, au-delà du filtre.
+
+```bash
+python rotation_backtest.py                    # 2020 à aujourd'hui, 12 cryptos liquides
+python rotation_backtest.py --grid             # + 18 combinaisons de réglages (robustesse)
+python rotation_backtest.py --daily-exit       # sortir dès que BTC casse sa moyenne, sans attendre dimanche
+```
+
+- **Par an :** le rendement annuel moyen.
+- **Pire baisse :** la plus grosse chute subie depuis un sommet.
+- **Sharpe :** le rendement divisé par les secousses subies. Plus il est haut, meilleur est le rapport gain/stress. Au-dessus de 1, c'est bon.
+
+Limite : l'univers est choisi aujourd'hui, donc il ne contient pas les cryptos qui se sont effondrées entre-temps. Ça embellit le résultat.
+
 ## Tests
 
 ```bash
