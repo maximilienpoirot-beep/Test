@@ -14,8 +14,11 @@ Exemples :
 """
 
 import argparse
+import json
 import os
 import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, replace
 
 import ccxt
@@ -65,10 +68,39 @@ def fetch_daily(exchange: ccxt.Exchange, symbol: str, since_ms: int) -> pd.Serie
     return s.iloc[:-1]  # la bougie du jour n'est pas clôturée
 
 
+BINANCE_PUBLIC_DATA = "https://data-api.binance.vision/api/v3/klines"
+
+
+def fetch_binance_daily(symbol: str, since_ms: int) -> pd.Series:
+    """Clôtures journalières via l'adresse publique de Binance réservée aux données de marché,
+    accessible même là où l'API de trading est bloquée."""
+    rows: list[list] = []
+    day_ms = 24 * 3600 * 1000
+    now_ms = int(time.time() * 1000)
+    while since_ms < now_ms - day_ms:
+        url = f"{BINANCE_PUBLIC_DATA}?symbol={symbol.replace('/', '')}&interval=1d&startTime={since_ms}&limit=1000"
+        try:
+            with urllib.request.urlopen(url, timeout=30) as resp:
+                batch = json.load(resp)
+        except urllib.error.HTTPError as e:
+            if e.code == 400:
+                raise ccxt.BadSymbol(symbol) from e
+            raise
+        if not batch:
+            break
+        rows += batch
+        since_ms = batch[-1][0] + day_ms
+    if not rows:
+        return pd.Series(dtype=float)
+    idx = pd.to_datetime([r[0] for r in rows], unit="ms", utc=True)
+    s = pd.Series([float(r[4]) for r in rows], index=idx, name="close")
+    return s[~s.index.duplicated()].iloc[:-1]  # la bougie du jour n'est pas clôturée
+
+
 def load_closes(exchange_id: str, coins: list[str], quote: str, start: pd.Timestamp, refresh: bool) -> pd.DataFrame:
     """Clôtures journalières, une colonne par crypto (NaN avant sa cotation). Mises en cache dans data/daily/."""
     os.makedirs("data/daily", exist_ok=True)
-    exchange = getattr(ccxt, exchange_id)({"enableRateLimit": True})
+    exchange = None if exchange_id == "binance" else getattr(ccxt, exchange_id)({"enableRateLimit": True})
     since_ms = int((start - pd.Timedelta(days=400)).timestamp() * 1000)
     series = {}
     for coin in coins:
@@ -79,7 +111,8 @@ def load_closes(exchange_id: str, coins: list[str], quote: str, start: pd.Timest
         else:
             print(f"Téléchargement de {coin}/{quote}…")
             try:
-                s = fetch_daily(exchange, f"{coin}/{quote}", since_ms)
+                symbol = f"{coin}/{quote}"
+                s = fetch_binance_daily(symbol, since_ms) if exchange is None else fetch_daily(exchange, symbol, since_ms)
             except ccxt.BadSymbol:
                 print(f"  {coin}/{quote} n'existe pas sur {exchange_id}, ignoré")
                 continue
