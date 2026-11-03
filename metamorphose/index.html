@@ -550,15 +550,15 @@ function buildTiger(n) {
       s = stripe(u, n2, 0.7) * smooth(-0.55, 0.05, ny) * (1 - smooth(1.45, 1.75, x) * 0.6);
     } else if (part >= 2 && part <= 5) {
       const inner = -nz * Math.sign(z);
-      white = Math.max(smooth(0.1, 0.7, inner) * 0.85, smooth(-1.35, -1.6, y) * 0.35);
+      white = Math.max(smooth(0.35, 0.85, inner) * 0.75, smooth(-1.45, -1.65, y) * 0.3);
       s = stripe(y * 4.4 + n1 * 1.2 + x * 0.5, n2, 0.74) * smooth(-1.45, -1.0, y) * (1 - white * 0.8);
     } else if (part === 6) {
       const d = tailDist(x, y, z);
       s = d > tailLen - 0.42 ? 1 : stripe(d * 3.4 + n1 * 0.5, n2 * 0.5, 0.62);
       white = smooth(0.0, -0.7, ny) * 0.4 * (1 - s);
     } else {
-      white = smooth(2.12, 2.32, x) * smooth(0.66, 0.5, y);
-      white = Math.max(white, smooth(0.36, 0.22, y));
+      white = smooth(2.22, 2.4, x) * smooth(0.6, 0.46, y);
+      white = Math.max(white, smooth(0.33, 0.2, y) * smooth(1.9, 2.1, x));
       white = Math.max(white, smooth(0.2, 0.32, az) * smooth(0.58, 0.42, y) * smooth(1.55, 1.75, x));
       white = Math.max(white, smooth(0.13, 0.07, Math.hypot(x - 2.16, y - 0.86, az - 0.2)));
       if (y > 0.7 && x < 2.3) s = stripe(z * 13 + n1 * 1.5 + x * 2, n2, 0.7) * smooth(0.72, 0.9, y) * smooth(2.35, 2.1, x);
@@ -573,7 +573,7 @@ function buildTiger(n) {
     }
     c = mixc(c, WHITE, white);
     c = mixc(c, BLACK, s);
-    e = s * (1 - s) * 4 * 0.5;                       // luminous stripe borders
+    e = s * (1 - s) * 4 * 0.14;                      // luminous stripe borders
     for (const E of eyes) {
       const de = Math.hypot(x - E[0], y - E[1], z - E[2]);
       if (de < 0.07) { if (de < 0.026) { c = [0.02, 0.02, 0.02]; e = 0; } else { c = [0.96, 0.78, 0.22]; e = 1.3; } }
@@ -652,11 +652,11 @@ function buildWhale(n) {
     // barnacle clusters on the chin & fins
     if ((x > 2.6 && ny < -0.1) || (part > 0 && part < 3 && x > 1.2)) { if (noise3(x * 9, y * 9, z * 9) > 0.42) c = [0.7, 0.7, 0.66]; }
     // bioluminescence
-    if (R() < 0.03) e = 0.35 + R() * 1.1;
-    if (x > 2.55 && ny > 0.35 && WF1 < 0.13) { e = 1.4; c = [0.55, 0.8, 0.85]; }         // head tubercles
-    if (Math.abs(nz) > 0.86 && y > -0.05 && y < 0.09 && x > -3 && x < 2 && Math.sin(x * 14) > 0.9) e = 1.6; // lateral line
-    if (tub) { e = 1.5; c = [0.7, 0.85, 0.9]; }
-    if (part === 3 && Math.abs(ny) < 0.35 && R() < 0.5) e = 0.9;                         // fluke edge
+    if (R() < 0.012) e = 0.25 + R() * 0.6;
+    if (x > 2.55 && ny > 0.35 && WF1 < 0.1) { e = 0.8; c = [0.45, 0.6, 0.65]; }          // head tubercles
+    if (Math.abs(nz) > 0.86 && y > -0.05 && y < 0.09 && x > -3 && x < 2 && Math.sin(x * 14) > 0.94) e = 0.9; // lateral line
+    if (tub) { e = 0.55; c = [0.62, 0.7, 0.72]; }
+    if (part === 3 && Math.abs(ny) < 0.3 && R() < 0.3) e = 0.6;                         // fluke edge
     for (const E of eyes) { const de = Math.hypot(x - E[0], y - E[1], z - E[2]); if (de < 0.08) { c = [0.02, 0.02, 0.03]; e = de < 0.035 ? 0.6 : 0; } }
     C.push(x, y, z, nx, ny, nz, c, e, part);
   }, 0.22);
@@ -745,10 +745,10 @@ const envVis = [{ value: 0 }, { value: 0 }, { value: 0 }];
 const ENV = [
   { fog: [0.34, 0.45, 0.62], dens: 0.0036, sun: [1.0, 0.88, 0.72], sunI: 3.0, dir: [-0.55, 0.42, 0.72], sky: [0.5, 0.64, 0.95], gnd: [0.16, 0.18, 0.23], hemiI: 0.85,
     rim: [0.75, 0.85, 1.0], tint: [0.98, 1.0, 1.04], expo: 0.82, bloomS: 0.32, bloomT: 1.25, dof: 1.0 },
-  { fog: [0.075, 0.11, 0.04], dens: 0.026, sun: [1.0, 0.82, 0.5], sunI: 3.4, dir: [0.35, 0.88, -0.32], sky: [0.35, 0.5, 0.2], gnd: [0.08, 0.06, 0.02], hemiI: 0.75,
-    rim: [1.0, 0.75, 0.35], tint: [1.04, 1.0, 0.92], expo: 1.0, bloomS: 0.55, bloomT: 0.95, dof: 1.25 },
+  { fog: [0.075, 0.11, 0.04], dens: 0.026, sun: [1.0, 0.82, 0.5], sunI: 2.6, dir: [0.35, 0.88, -0.32], sky: [0.35, 0.5, 0.2], gnd: [0.08, 0.06, 0.02], hemiI: 0.75,
+    rim: [0.8, 0.6, 0.28], tint: [1.04, 1.0, 0.92], expo: 0.9, bloomS: 0.45, bloomT: 1.1, dof: 1.25 },
   { fog: [0.004, 0.04, 0.075], dens: 0.036, sun: [0.45, 0.8, 1.0], sunI: 2.4, dir: [0.12, 1.0, 0.08], sky: [0.08, 0.3, 0.45], gnd: [0.005, 0.02, 0.035], hemiI: 0.9,
-    rim: [0.2, 0.85, 1.0], tint: [0.95, 1.0, 1.05], expo: 1.1, bloomS: 0.85, bloomT: 0.6, dof: 1.0 },
+    rim: [0.12, 0.5, 0.65], tint: [0.95, 1.0, 1.05], expo: 1.05, bloomS: 0.6, bloomT: 0.85, dof: 1.0 },
 ];
 const sunLight = new THREE.DirectionalLight(0xffffff, 1);
 const hemiLight = new THREE.HemisphereLight(0xffffff, 0x000000, 1);
@@ -1330,9 +1330,11 @@ void main(){
     tr = sin(3.14159265*e);
     pos = mix(posF, posT, e);
     if (tr > 0.0) {
-      vec3 q = pos*0.32 + vec3(0.0, t*0.35, aRand.w*4.0);
-      vec3 curl = vec3(snoise(q), snoise(q + vec3(31.4, 7.1, 0.0)), snoise(q + vec3(-11.0, 19.0, 5.0)));
-      pos += curl*2.6*tr;
+      // cheap divergence-free-ish flow (trig field) modulated by one simplex octave
+      vec3 q = pos*0.42 + vec3(0.0, t*0.35, aRand.w*4.0);
+      vec3 flow = vec3(sin(q.y*1.7 + t) + cos(q.z*1.3 - t*0.7), sin(q.z*1.5 - t*0.8) + cos(q.x*1.1 + t*0.6), sin(q.x*1.9 + t*0.9) + cos(q.y*1.2 - t)) * 0.5;
+      float nm = snoise(q*0.7);
+      pos += flow*(1.6 + nm*1.4)*tr;
       pos += normalize(norF + norT + 1e-4)*tr*1.2*aRand.x;
       float sw = tr*(1.0 + aRand.y*1.6)*(uMode > 0.5 && uMode < 1.5 ? -1.0 : 1.0);
       float cs = cos(sw), sn = sin(sw);
@@ -1646,7 +1648,7 @@ async function boot() {
   gsap.to('.ui', { opacity: 1, duration: 1.6, delay: 1.4, stagger: 0.12 });
   setCaption(0, true);
   setTimeout(() => { S.started = true; }, 2600);
-  if (location.hash === '#debug') window.__meta = { goTo, S, U, W, FX, cam, gsap };   // test hook only
+  if (location.hash === '#debug') window.__meta = { goTo, S, U, W, FX, cam, gsap, PREF };   // test hook only
 
   let last = performance.now(), time = 0, fpsAcc = 0, fpsN = 0, slow = 0, degraded = false;
   const holdBar = $('#hold');
