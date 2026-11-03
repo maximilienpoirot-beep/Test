@@ -1223,14 +1223,14 @@ function buildAmbient() {
    8. THE MORPHING PARTICLE SYSTEM
    ===================================================================== */
 const U = {
-  uProgress: { value: 0 }, uFromF: { value: 0 }, uToF: { value: 1 }, uMode: { value: 0 }, uIntro: { value: 0 }, uDens: { value: DENS },
+  uProgress: { value: 0 }, uFromF: { value: 0 }, uToF: { value: 1 }, uMode: { value: 0 }, uIntro: { value: 0 }, uDens: { value: DENS }, uMaxPt: { value: 18 * DPR },
 };
 const PARTICLE_VS = /* glsl */`
 attribute vec4 aPosA; attribute vec4 aPosB; attribute vec4 aPosC;
 attribute vec3 aNorA; attribute vec3 aNorB; attribute vec3 aNorC;
 attribute vec4 aColA; attribute vec4 aColB; attribute vec4 aColC;
 attribute vec4 aRand;
-uniform float uTime, uProgress, uFromF, uToF, uMode, uIntro, uProj, uDens;
+uniform float uTime, uProgress, uFromF, uToF, uMode, uIntro, uProj, uDens, uMaxPt;
 varying vec3 vN; varying vec3 vWP; varying vec3 vCol; varying vec3 vGlow;
 varying float vTr; varying float vThin; varying float vRot; varying float vSpec; varying float vShin;
 ${NOISE}
@@ -1349,7 +1349,7 @@ void main(){
     vec3 tg = uMode < 0.5 ? vec3(0.6,0.9,0.2) : (uMode < 1.5 ? vec3(0.2,0.8,1.0) : vec3(0.8,0.9,1.0));
     col = mix(col, tc, tr*0.85);
     glow = mix(glow, tg, tr); em = max(em, tr*tr*0.35*(0.3 + aRand.x));
-    size *= 1.0 + tr*(uMode < 0.5 ? 3.2 : (uMode < 1.5 ? 1.6 : 2.4));
+    size *= 1.0 + tr*(uMode < 0.5 ? 2.0 : (uMode < 1.5 ? 1.2 : 1.6));
   }
   if (uIntro < 1.0) {
     float d0 = aRand.z*0.4 + aRand.y*0.2;
@@ -1362,7 +1362,7 @@ void main(){
   }
   vec4 mv = viewMatrix * vec4(pos, 1.0);
   gl_Position = projectionMatrix * mv;
-  gl_PointSize = clamp(size*uDens*(0.65 + aRand.x*0.7)*uProj / -mv.z, 1.0, 90.0);
+  gl_PointSize = clamp(size*uDens*(0.65 + aRand.x*0.7)*uProj / -mv.z, 1.0, uMaxPt);   // capped: fill-rate safety
   vN = nor; vWP = pos; vCol = col; vGlow = glow*em; vTr = tr; vThin = thin;
   vRot = aRand.w*6.283 + t*(0.5 + aRand.y); vSpec = sp.x; vShin = sp.y;
 }`;
@@ -1531,7 +1531,7 @@ function goTo(to) {
   S.tl = tl;
   tl.to(U.uProgress, { value: 1, duration: 2.9, ease: 'power1.inOut' }, 0)
     // ultra-fast push-in through the swarm
-    .to(cam, { zoomMul: 0.36, fovKick: -10, duration: 0.5, ease: 'expo.in' }, 0)
+    .to(cam, { zoomMul: 0.45, fovKick: -10, duration: 0.5, ease: 'expo.in' }, 0)
     .to(FX, { zoom: 0.16, ca: 0.014, boost: 1, duration: 0.5, ease: 'expo.in' }, 0)
     .to(FX, { flash: 0.22, duration: 0.08, ease: 'none' }, 0.46)
     .to(FX, { flash: 0, duration: 0.8, ease: 'power2.out' }, 0.54)
@@ -1646,6 +1646,7 @@ async function boot() {
   gsap.to('.ui', { opacity: 1, duration: 1.6, delay: 1.4, stagger: 0.12 });
   setCaption(0, true);
   setTimeout(() => { S.started = true; }, 2600);
+  if (location.hash === '#debug') window.__meta = { goTo, S, U, W, FX, cam, gsap };   // test hook only
 
   let last = performance.now(), time = 0, fpsAcc = 0, fpsN = 0, slow = 0, degraded = false;
   const holdBar = $('#hold');
@@ -1686,6 +1687,7 @@ async function boot() {
 
 function onResize() {
   renderer.setPixelRatio(DPR); renderer.setSize(innerWidth, innerHeight);
+  U.uMaxPt.value = 18 * DPR;
   composer.setPixelRatio(DPR); composer.setSize(innerWidth, innerHeight);
   sceneRT.setSize(bw(), bh());
   dofMat.uniforms.uRes.value.set(bw(), bh()); finalMat.uniforms.uRes.value.set(bw(), bh());
