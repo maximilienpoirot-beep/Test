@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Métamorphose</title>
+<meta name="description" content="Court-métrage WebGL : un aigle royal se dissout en plumes, un tigre du Bengale bondit et plonge, ses éclaboussures deviennent une baleine à bosse. Photographies réelles, particules GPU.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  /* Layout: full-bleed cinema frame; caption bottom-left, chapter rail bottom, credits on demand. Single dark look. */
+  :root{
+    color-scheme:dark;
+    --bg:#050608; --fg:#f2ede3; --dim:rgba(242,237,227,.6); --faint:rgba(242,237,227,.18);
+    --accent:#e2bd78; --glass:rgba(10,12,16,.42);
+    --display:'Cormorant Garamond',Georgia,'Times New Roman',serif;
+    --body:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:var(--bg);color:var(--fg);overflow:hidden;font-family:var(--body);-webkit-font-smoothing:antialiased}
+  #gl{position:fixed;inset:0;width:100%;height:100%;display:block}
+  .ui{position:fixed;z-index:3;pointer-events:none}
+  .ui button,.ui a{pointer-events:auto}
+
+  .brand{top:calc(26px + env(safe-area-inset-top,0px));left:max(28px,env(safe-area-inset-left,0px));opacity:0}
+  .brand b{font-weight:500;font-size:11px;letter-spacing:.48em}
+  .brand span{display:block;margin-top:8px;font-weight:300;font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--dim)}
+
+  .caption{left:max(28px,env(safe-area-inset-left,0px));bottom:calc(86px + env(safe-area-inset-bottom,0px));max-width:min(560px,calc(100vw - 56px))}
+  .caption .chap{font-size:10.5px;font-weight:500;letter-spacing:.34em;text-transform:uppercase;color:var(--accent);display:flex;gap:14px;align-items:center;opacity:0}
+  .caption .chap i{width:40px;height:1px;background:currentColor;opacity:.6}
+  .caption h1{font-family:var(--display);font-weight:400;font-size:clamp(46px,7.6vw,108px);line-height:1;letter-spacing:-.01em;margin-top:10px;overflow:hidden;white-space:nowrap;padding-bottom:.08em;text-shadow:0 2px 30px rgba(0,0,0,.35)}
+  .caption h1 .ch{display:inline-block}
+  .caption .latin{font-family:var(--display);font-style:italic;font-size:21px;color:var(--dim);opacity:0}
+  .caption .fact{margin-top:12px;font-size:12px;font-weight:300;letter-spacing:.06em;color:var(--dim);opacity:0}
+  .caption .fact strong{font-weight:500;color:var(--fg);font-variant-numeric:tabular-nums}
+
+  .rail{left:max(28px,env(safe-area-inset-left,0px));right:max(28px,env(safe-area-inset-right,0px));bottom:calc(30px + env(safe-area-inset-bottom,0px));display:grid;grid-template-columns:repeat(3,1fr) auto;gap:14px;align-items:end;opacity:0}
+  .seg{display:flex;flex-direction:column;gap:9px;min-width:0}
+  .seg span{font-size:9.5px;letter-spacing:.26em;text-transform:uppercase;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .6s}
+  .seg.on span{color:var(--fg)}
+  .seg u{display:block;height:1px;background:var(--faint);position:relative;overflow:hidden;text-decoration:none}
+  .seg u::after{content:"";position:absolute;inset:0;background:var(--fg);transform-origin:left;transform:scaleX(var(--p,0))}
+  #creditsBtn{all:unset;cursor:pointer;font-size:9.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--dim);padding:4px 0;white-space:nowrap}
+  #creditsBtn:hover,#creditsBtn:focus-visible{color:var(--fg)}
+  #creditsBtn:focus-visible{outline:1px solid var(--accent);outline-offset:4px}
+
+  #replay{all:unset;cursor:pointer;position:fixed;z-index:4;right:max(28px,env(safe-area-inset-right,0px));bottom:calc(86px + env(safe-area-inset-bottom,0px));
+    display:flex;align-items:center;gap:14px;padding:15px 22px 15px 26px;border-radius:999px;background:var(--glass);border:1px solid rgba(242,237,227,.25);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);font-size:11px;font-weight:500;letter-spacing:.3em;text-transform:uppercase;opacity:0;visibility:hidden;transition:border-color .4s}
+  #replay:hover{border-color:var(--accent)}
+  #replay:focus-visible{outline:1px solid var(--accent);outline-offset:4px}
+  #replay svg{width:14px;height:14px}
+
+  #credits{position:fixed;z-index:6;inset:auto max(16px,env(safe-area-inset-right,0px)) calc(70px + env(safe-area-inset-bottom,0px)) auto;width:min(420px,calc(100vw - 32px));max-height:60vh;overflow:auto;
+    padding:20px 22px;border-radius:14px;background:rgba(8,10,13,.86);border:1px solid var(--faint);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+  #credits h2{font-family:var(--display);font-weight:500;font-size:22px;margin-bottom:12px}
+  #credits ol{list-style:none;display:flex;flex-direction:column;gap:10px}
+  #credits li{font-size:12px;line-height:1.5;color:var(--dim)}
+  #credits li b{color:var(--fg);font-weight:500}
+  #credits a{color:var(--accent);text-decoration:none}
+  #credits a:hover{text-decoration:underline}
+  #credits p{margin-top:14px;font-size:11px;color:var(--dim);line-height:1.5}
+
+  #loader{position:fixed;inset:0;z-index:10;display:grid;place-items:center;background:var(--bg);transition:opacity 1s ease}
+  #loader div{font-family:var(--display);font-size:30px;letter-spacing:.04em;color:var(--dim)}
+  #err{position:fixed;inset:0;z-index:11;display:none;place-items:center;padding:24px;text-align:center;color:var(--dim);background:var(--bg)}
+
+  @media (max-width:700px){
+    .caption{bottom:calc(92px + env(safe-area-inset-bottom,0px))}
+    .caption .latin{font-size:18px}
+    .rail{grid-template-columns:repeat(3,1fr)}
+    #creditsBtn{position:fixed;top:calc(26px + env(safe-area-inset-top,0px));right:max(20px,env(safe-area-inset-right,0px))}
+    #replay{left:max(16px,env(safe-area-inset-left,0px));right:auto;bottom:calc(196px + env(safe-area-inset-bottom,0px))}
+  }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<canvas id="gl" aria-label="Court-métrage : métamorphose d'un aigle en tigre puis en baleine"></canvas>
+<div id="loader"><div>Métamorphose</div></div>
+<div id="err"></div>
+
+<header class="ui brand"><b>MÉTAMORPHOSE</b><span>Seamless Animal &amp; Ecosystem Morphing</span></header>
+
+<section class="ui caption" aria-live="polite">
+  <div class="chap" id="chap"><span id="chapNum"></span><i></i><span id="chapHab"></span></div>
+  <h1 id="name"></h1>
+  <div class="latin" id="latin"></div>
+  <div class="fact" id="fact"></div>
+</section>
+
+<div class="ui rail" id="rail">
+  <div class="seg" data-i="0"><span>Aigle royal</span><u></u></div>
+  <div class="seg" data-i="1"><span>Tigre du Bengale</span><u></u></div>
+  <div class="seg" data-i="2"><span>Baleine à bosse</span><u></u></div>
+  <button id="creditsBtn" aria-expanded="false" aria-controls="credits">Crédits photos</button>
+</div>
+
+<button id="replay"><span>Rejouer</span><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2.5 8a5.5 5.5 0 1 0 1.8-4.1"/><path d="M4.4 1.2v3h-3"/></svg></button>
+
+<aside id="credits" hidden>
+  <h2>Crédits photos</h2>
+  <ol id="creditList"></ol>
+  <p>Photographies issues de Wikimedia Commons. L'aigle a été détouré et placé sur le paysage du Pirin. Les images sont recadrées et animées ; les licences d'origine s'appliquent.</p>
+</aside>
+
+<script id="assets" type="application/json">/*__ASSETS__*/</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+const $ = s => document.querySelector(s);
+const ASSETS = JSON.parse($('#assets').textContent);
+const IS_MOBILE = matchMedia('(pointer: coarse)').matches || innerWidth < 760;
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const DPR = Math.min(devicePixelRatio || 1, IS_MOBILE ? 1.5 : 1.75);
+const NP = IS_MOBILE ? 90000 : 210000;      // morph particles (one per screen cell)
+
+/* -----------------------------------------------------------------
+   SHOTS — each photo, its framing (image uv, y up) and its life
+   ----------------------------------------------------------------- */
+const EAGLE_RECT = [0.33, 0.432, 0.42, 0.42 * (891 / 1105) * (1920 / 1280)];   // eagle cut-out placed on the Pirin photo
+const SHOTS = [
+  { img: 'mountain', over: 'eagle', aspect: 1920 / 1280, c0: [0.52, 0.58], c1: [0.55, 0.64], z0: 1.0, z1: 1.14, fx: 0, blur: 0 },
+  { img: 'tiger_rock', aspect: 1920 / 1282, c0: [0.60, 0.50], c1: [0.72, 0.58], z0: 1.0, z1: 1.22, fx: 0, blur: 0 },
+  { img: 'tiger_leap', aspect: 1920 / 1280, c0: [0.30, 0.58], c1: [0.47, 0.60], z0: 1.16, z1: 1.32, fx: 1, blur: 0.0045 },
+  { img: 'tiger_under', aspect: 1920 / 1280, c0: [0.55, 0.60], c1: [0.47, 0.52], z0: 1.0, z1: 1.2, fx: 2, blur: 0 },
+  { img: 'splash', aspect: 1920 / 1280, c0: [0.62, 0.45], c1: [0.60, 0.48], z0: 1.0, z1: 1.18, fx: 0, blur: 0 },
+  { img: 'whale', aspect: 1920 / 1248, c0: [0.48, 0.55], c1: [0.55, 0.60], z0: 1.0, z1: 1.12, fx: 0, blur: 0 },
+];
+SHOTS.forEach(s => { s.p = 0; s.kick = 0; });
+const CHAPTERS = [
+  { num: 'I', name: 'Aigle royal', latin: 'Aquila chrysaetos', hab: 'Massif du Pirin · Vihren, 2 914 m', fact: 'Envergure jusqu’à <strong>2,3 m</strong>, piqué à plus de <strong>240 km/h</strong>' },
+  { num: 'II', name: 'Tigre du Bengale', latin: 'Panthera tigris tigris', hab: 'Jungle tropicale · Le bond', fact: 'Un bond peut couvrir <strong>10 m</strong> ; il nage sans effort' },
+  { num: 'III', name: 'Baleine à bosse', latin: 'Megaptera novaeangliae', hab: 'Océan ouvert · Le saut', fact: 'Jusqu’à <strong>30 tonnes</strong> projetées hors de l’eau' },
+];
+
+/* -----------------------------------------------------------------
+   GLSL
+   ----------------------------------------------------------------- */
+const COMMON = /* glsl */`
+uniform vec2 uRes; uniform float uTime; uniform vec2 uGrid; uniform vec2 uFocus;
+uniform float uType; uniform float uT;
+uniform sampler2D uTexA; uniform sampler2D uOverA; uniform vec4 uInfoA; uniform vec4 uFxA; uniform vec4 uRectA; uniform vec2 uShA; uniform float uBlackA;
+uniform sampler2D uTexB; uniform sampler2D uOverB; uniform vec4 uInfoB; uniform vec4 uFxB; uniform vec4 uRectB; uniform vec2 uShB;
+float hash12(vec2 p){ vec3 p3 = fract(vec3(p.xyx)*0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y)*p3.z); }
+float vnoise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0 - 2.0*f);
+  return mix(mix(hash12(i), hash12(i + vec2(1,0)), f.x), mix(hash12(i + vec2(0,1)), hash12(i + vec2(1,1)), f.x), f.y); }
+float caustic(vec2 p, float t){
+  vec2 q = mod(p, 6.2831853) - 250.0; vec2 i = q; float c = 1.0; float inten = 0.005;
+  for (int n = 0; n < 4; n++) { float tt = t*(1.0 - (3.5/float(n + 1)));
+    i = q + vec2(cos(tt - i.x) + sin(tt + i.y), sin(tt - i.y) + cos(tt + i.x));
+    c += 1.0/length(vec2(q.x/(sin(i.x + tt)/inten), q.y/(cos(i.y + tt)/inten))); }
+  c /= 4.0; c = 1.17 - pow(c, 1.4); return pow(abs(c), 8.0);
+}
+// screen (0..1) -> image uv for a cover-fitted, zoomed, panned photo
+vec2 shotUV(vec2 s, vec4 info){
+  float sa = uRes.x/uRes.y, ia = info.w;
+  vec2 fit = sa > ia ? vec2(1.0, ia/sa) : vec2(sa/ia, 1.0);
+  vec2 hf = 0.5*fit/info.z;
+  vec2 c = clamp(info.xy, hf, 1.0 - hf);
+  return c + (s - 0.5)*fit/info.z;
+}
+// rgb + subject mask (eagle cut-out alpha)
+vec4 sampleLayer(sampler2D tex, sampler2D over, vec4 info, vec4 fx, vec4 rect, vec2 s){
+  vec2 uv = shotUV(s, info);
+  if (fx.x > 1.5) uv += vec2(sin(uv.y*38.0 + uTime*1.6), cos(uv.x*31.0 + uTime*1.3))*0.0022;    // underwater refraction
+  vec3 col;
+  if (fx.z > 0.0005) {                                                                      // directional motion blur
+    vec2 d = vec2(cos(fx.w), sin(fx.w))*fx.z; col = vec3(0.0);
+    for (int i = 0; i < 9; i++) col += texture2D(tex, uv + d*(float(i)/8.0 - 0.5)).rgb;
+    col /= 9.0;
+  } else col = texture2D(tex, uv).rgb;
+  float m = 0.0;
+  if (fx.y > 0.5) {
+    vec2 eu = (uv - rect.xy)/rect.zw;
+    if (eu.x > 0.0 && eu.x < 1.0 && eu.y > 0.0 && eu.y < 1.0) { vec4 e = texture2D(over, eu); col = mix(col, e.rgb, e.a); m = e.a; }
+  }
+  if (fx.x > 1.5) {                                                                         // caustics dancing on the water
+    float cz = caustic(uv*vec2(9.0, 6.0), uTime*0.55);
+    col = col*vec3(0.93, 1.0, 1.03) + vec3(0.45, 0.8, 0.9)*cz*0.2*(0.4 + 0.6*uv.y);
+  }
+  return vec4(col, m);
+}
+// when a screen cell leaves photo A (per transition style)
+float tDelay(vec2 s, float mask, float r){
+  float asp = uRes.x/uRes.y;
+  float d = length((s - uFocus)*vec2(asp, 1.0));
+  float dl;
+  if (uType < 1.5) dl = mask > 0.3 ? 0.02 + r*0.14 : 0.16 + d*0.28 + vnoise(s*7.0)*0.12 + r*0.06;      // feathers: eagle first
+  else if (uType < 4.5) dl = s.y*0.42 + vnoise(s*9.0)*0.12 + r*0.06;                                 // burst: from the bottom up
+  else if (uType < 5.5) dl = d*0.3 + vnoise(s*8.0)*0.12 + r*0.05;                                    // spray: from the splash out
+  else dl = vnoise(s*5.0)*0.3 + r*0.14 + (1.0 - s.y)*0.12;                                           // intro
+  return min(dl, 0.6);
+}
+float localE(float dl){ return clamp((uT - dl)/0.4, 0.0, 1.0); }
+`;
+
+const BG_FS = /* glsl */`
+uniform float uMix;
+varying vec2 vUv;
+${COMMON}
+void main(){
+  vec2 s = vUv; vec3 col;
+  bool particles = uType > 0.5 && (uType < 1.5 || uType > 3.5);
+  if (particles) {
+    vec2 cell = floor(s*uGrid), sc = (cell + 0.5)/uGrid;
+    float r = hash12(cell + 0.37);
+    float maskA = uType < 1.5 ? sampleLayer(uTexA, uOverA, uInfoA, uFxA, uRectA, sc).a : 0.0;
+    float e = localE(tDelay(sc, maskA, r));
+    vec4 A = uBlackA > 0.5 ? vec4(0.0) : sampleLayer(uTexA, uOverA, uInfoA, uFxA, uRectA, s - uShA);
+    vec4 B = sampleLayer(uTexB, uOverB, uInfoB, uFxB, uRectB, s - uShB);
+    vec3 base = mix(A.rgb, B.rgb, e)*0.16;
+    col = mix(base, A.rgb, 1.0 - smoothstep(0.0, 0.05, e));
+    col = mix(col, B.rgb, smoothstep(0.88, 1.0, e));
+  } else {
+    col = sampleLayer(uTexA, uOverA, uInfoA, uFxA, uRectA, s - uShA).rgb;
+    if (uMix > 0.001) col = mix(col, sampleLayer(uTexB, uOverB, uInfoB, uFxB, uRectB, s - uShB).rgb, uMix);
+  }
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+const PT_VS = /* glsl */`
+attribute vec2 aCell;
+uniform float uPt;
+varying vec3 vCol; varying float vA; varying float vTr; varying float vRot; varying float vBig;
+${COMMON}
+void main(){
+  vec2 s = (aCell + 0.5)/uGrid;
+  float r = hash12(aCell + 0.37), r2 = hash12(aCell*1.7 + 11.3), r3 = hash12(aCell*2.3 - 5.1);
+  vec4 A = uBlackA > 0.5 ? vec4(0.0) : sampleLayer(uTexA, uOverA, uInfoA, uFxA, uRectA, s);
+  vec4 B = sampleLayer(uTexB, uOverB, uInfoB, uFxB, uRectB, s);
+  float e = localE(tDelay(s, uType < 1.5 ? A.a : 0.0, r));
+  if (e <= 0.0 || e >= 1.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; return; }
+  float tr = sin(3.14159265*e), asp = uRes.x/uRes.y;
+  vec2 p = s; float size = 1.0, alpha = 1.0, big = 0.0;
+  vec3 col = mix(A.rgb, B.rgb, smoothstep(0.3, 0.7, e));
+  vec2 q = s*3.0 + uTime*0.08;
+  vec2 flow = vec2(sin(q.y*2.1 + r*6.0) + cos(q.x*1.3 + uTime*0.4), cos(q.x*1.7 - r*4.0) + sin(q.y*1.1 - uTime*0.3))*0.5;
+  if (uType < 1.5) {                       // FEATHERS — the eagle's plumage peels off on the wind
+    big = smoothstep(0.3, 0.8, A.a);
+    if (big > 0.0) {
+      float k = pow(e, 1.35);
+      p += (vec2(0.75 + 0.7*r, 0.32 + 0.45*r3) + flow*0.35)*k*vec2(1.0/asp*1.5, 1.0);
+      p.x += sin(uTime*2.6 + r*30.0)*0.012*k;
+      size = 1.0 + 3.6*k*(0.5 + r2);
+      alpha = 1.0 - smoothstep(0.65, 1.0, e);
+      col = mix(A.rgb, A.rgb*1.15, k);
+    } else {
+      p += (flow*0.1 + vec2(0.07, 0.035))*tr*vec2(1.0/asp*1.6, 1.0);
+      size = 1.0 + 1.4*tr*r2;
+    }
+  } else if (uType < 4.5) {                // BURST — water explodes upward, droplets arc and fall
+    p.y += (e - e*e)*4.0*(0.18 + 0.42*r2);
+    p.x += (r - 0.5)*0.22*tr/asp + flow.x*0.02*tr;
+    size = 1.0 + 1.1*tr*r3;
+    col = mix(col, vec3(0.8, 0.92, 1.0), 0.45*tr);
+  } else if (uType < 5.5) {                // SPRAY — the splash scatters and settles into the whale
+    vec2 dir = normalize((s - uFocus)*vec2(asp, 1.0) + 1e-4);
+    p += dir*vec2(1.0/asp, 1.0)*0.3*tr*(0.35 + r2) + vec2(0.0, 0.1*tr*r3) + flow*0.03*tr;
+    size = 1.0 + 1.3*tr*r;
+    col = mix(col, vec3(0.92, 0.97, 1.0), 0.35*tr);
+  } else {                                 // INTRO — the frame condenses out of drifting particles
+    vec2 sc = (vec2(r, r2) - 0.5)*vec2(1.6, 1.2) + flow*0.25;
+    p += sc*pow(1.0 - e, 2.0);
+    col = B.rgb; alpha = smoothstep(0.0, 0.35, e); size = 1.0 + 1.5*(1.0 - e)*r3;
+  }
+  gl_Position = vec4(p*2.0 - 1.0, 0.0, 1.0);
+  gl_PointSize = uPt*size;
+  vCol = col; vA = alpha; vTr = tr; vBig = big;
+  vRot = r*6.2832 + uTime*(0.8 + r2*2.2)*(big > 0.0 ? 1.0 : 0.3);
+}`;
+const PT_FS = /* glsl */`
+uniform float uType;
+varying vec3 vCol; varying float vA; varying float vTr; varying float vRot; varying float vBig;
+void main(){
+  vec2 c = gl_PointCoord*2.0 - 1.0;
+  float a; vec3 col = vCol;
+  if (vTr < 0.12) a = 1.0;                                     // still a pixel tile: seamless with the photo
+  else if (uType < 1.5) {                                      // feather: vane + rachis
+    float cr = cos(vRot), sr = sin(vRot);
+    vec2 rc = vec2(cr*c.x - sr*c.y, sr*c.x + cr*c.y);
+    float w = mix(0.55, 0.32, vBig)*(1.0 - rc.x*rc.x*0.85);
+    a = 1.0 - smoothstep(w*0.75, w, abs(rc.y + rc.x*rc.x*0.12));
+    a *= 1.0 - smoothstep(0.85, 1.0, abs(rc.x));
+    col *= 1.0 - 0.28*(1.0 - smoothstep(0.0, 0.06, abs(rc.y + rc.x*rc.x*0.12)))*vBig;
+    col *= 0.9 + 0.2*sin(rc.x*40.0 + rc.y*9.0)*vBig;
+  } else if (uType > 3.5 && uType < 5.5) {                     // droplet with specular glint
+    float d = length(c); a = 1.0 - smoothstep(0.65, 1.0, d);
+    col += vec3(1.0)*pow(max(1.0 - length(c - vec2(-0.3, 0.35))*2.4, 0.0), 2.0)*0.8*vTr;
+  } else { a = 1.0 - smoothstep(0.7, 1.0, length(c)); }
+  a *= vA;
+  if (a < 0.02) discard;
+  gl_FragColor = vec4(col, a);
+}`;
+
+// ambient life: snow, dust in the light, speed streaks, bubbles, spray
+const AMB_VS = /* glsl */`
+attribute vec4 aSeed;
+uniform float uTime; uniform vec2 uPar; uniform float uPx; uniform float uBurst;
+uniform float uW0, uW1, uW2, uW3, uW4;
+varying vec3 vCol; varying float vA; varying float vKind;
+void main(){
+  float kind = floor(aSeed.w*5.0);
+  float w = kind < 0.5 ? uW0 : kind < 1.5 ? uW1 : kind < 2.5 ? uW2 : kind < 3.5 ? uW3 : uW4;
+  if (w < 0.004) { gl_Position = vec4(2.0); gl_PointSize = 0.0; return; }
+  float z = 0.15 + aSeed.z*0.85, t = uTime, rr = fract(aSeed.w*5.0);
+  vec2 p = aSeed.xy; float size; vec3 col; float a;
+  if (kind < 0.5) { p += vec2(0.035, -0.08)*t*(0.4 + z) + vec2(sin(t*0.8 + rr*40.0)*0.012, 0.0); size = mix(1.6, 10.0, z*z); col = vec3(1.0); a = 0.55 + 0.35*z; }
+  else if (kind < 1.5) { p += vec2(sin(t*0.13 + rr*50.0)*0.05, t*0.01*(0.5 + z)); size = mix(1.4, 6.0, z*z); col = vec3(1.0, 0.86, 0.58)*(0.8 + 1.8*pow(0.5 + 0.5*sin(t*1.7 + rr*90.0), 8.0)); a = 0.55; }
+  else if (kind < 2.5) { p += vec2(-1.4, 0.0)*t*(0.5 + z); size = mix(3.0, 14.0, z*z); col = vec3(1.0, 0.85, 0.55); a = 0.32; }
+  else if (kind < 3.5) { p += vec2(sin(t*2.0 + rr*30.0)*0.01, t*(0.05 + 0.12*z)); p.y += uBurst*z*0.6; size = mix(3.0, 18.0, z*z); col = vec3(0.86, 0.97, 1.0); a = 0.75; }
+  else { p += vec2(0.012*sin(rr*9.0 + t*0.5), -t*(0.05 + 0.18*z)); size = mix(1.8, 9.0, z*z); col = vec3(0.95, 0.98, 1.0); a = 0.7; }
+  p = fract(p) + uPar*z*0.02;
+  gl_Position = vec4(p*2.0 - 1.0, 0.0, 1.0);
+  gl_PointSize = size*uPx;
+  vCol = col; vA = a*w; vKind = kind;
+}`;
+const AMB_FS = /* glsl */`
+varying vec3 vCol; varying float vA; varying float vKind;
+void main(){
+  vec2 c = gl_PointCoord*2.0 - 1.0; float d = length(c), a;
+  if (vKind > 1.5 && vKind < 2.5) a = (1.0 - smoothstep(0.0, 0.18, abs(c.y)))*(1.0 - abs(c.x));          // streak
+  else if (vKind > 2.5 && vKind < 3.5) a = smoothstep(0.55, 0.78, d)*(1.0 - smoothstep(0.82, 1.0, d)) + pow(max(1.0 - length(c - vec2(-0.35, 0.35))*3.0, 0.0), 2.0); // bubble
+  else { a = 1.0 - smoothstep(0.0, 1.0, d); a *= a; }
+  gl_FragColor = vec4(vCol*a*vA, 1.0);
+}`;
+
+const POST_FS = /* glsl */`
+uniform sampler2D tDiffuse; uniform vec2 uRes; uniform float uTime, uCA, uZoom, uFlash, uGrain, uVig;
+varying vec2 vUv;
+vec3 sampleCA(vec2 uv){ vec2 d = uv - 0.5; vec2 o = d*uCA*(0.4 + length(d)*1.6);
+  return vec3(texture2D(tDiffuse, uv + o).r, texture2D(tDiffuse, uv).g, texture2D(tDiffuse, uv - o).b); }
+void main(){
+  vec3 col;
+  if (uZoom > 0.002) { col = vec3(0.0); for (int i = 0; i < 12; i++) col += sampleCA(0.5 + (vUv - 0.5)*(1.0 - uZoom*float(i)/11.0)); col /= 12.0; }
+  else col = sampleCA(vUv);
+  col += uFlash*vec3(1.0, 0.98, 0.95);
+  vec2 d = vUv - 0.5; d.x *= uRes.x/uRes.y;
+  col *= mix(1.0, smoothstep(1.1, 0.3, length(d)), uVig);
+  float g = fract(sin(dot(vUv*uRes + fract(uTime*7.3)*61.7, vec2(12.9898, 78.233)))*43758.5453);
+  col *= 1.0 + (g - 0.5)*uGrain;
+  gl_FragColor = vec4(col, 1.0);
+}`;
+const QUAD_VS = /* glsl */`varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
+
+/* -----------------------------------------------------------------
+   RENDERER
+   ----------------------------------------------------------------- */
+const canvas = $('#gl');
+let renderer;
+try { renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' }); }
+catch (e) { $('#err').style.display = 'grid'; $('#err').textContent = 'Cette démonstration nécessite WebGL 2.'; throw e; }
+renderer.setPixelRatio(DPR); renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.NoToneMapping;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+const scene = new THREE.Scene();
+const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const W = () => Math.floor(innerWidth * DPR), H = () => Math.floor(innerHeight * DPR);
+
+const loadTex = src => new Promise((res, rej) => new THREE.TextureLoader().load(src, t => {
+  t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.MirroredRepeatWrapping;
+  t.anisotropy = 4; res(t);
+}, undefined, rej));
+
+const U = {
+  uRes: { value: new THREE.Vector2(W(), H()) }, uTime: { value: 0 }, uGrid: { value: new THREE.Vector2(1, 1) }, uFocus: { value: new THREE.Vector2(0.5, 0.5) },
+  uType: { value: 6 }, uT: { value: 0 }, uMix: { value: 0 }, uPt: { value: 4 },
+  uTexA: { value: null }, uOverA: { value: null }, uInfoA: { value: new THREE.Vector4() }, uFxA: { value: new THREE.Vector4() }, uRectA: { value: new THREE.Vector4() }, uShA: { value: new THREE.Vector2() }, uBlackA: { value: 1 },
+  uTexB: { value: null }, uOverB: { value: null }, uInfoB: { value: new THREE.Vector4() }, uFxB: { value: new THREE.Vector4() }, uRectB: { value: new THREE.Vector4() }, uShB: { value: new THREE.Vector2() },
+};
+const AU = { uTime: U.uTime, uPar: { value: new THREE.Vector2() }, uPx: { value: DPR }, uBurst: { value: 0 },
+  uW0: { value: 0 }, uW1: { value: 0 }, uW2: { value: 0 }, uW3: { value: 0 }, uW4: { value: 0 } };
+
+const bg = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({ uniforms: U, vertexShader: QUAD_VS, fragmentShader: BG_FS, depthTest: false, depthWrite: false }));
+bg.frustumCulled = false; bg.renderOrder = 0; scene.add(bg);
+
+const ptGeo = new THREE.BufferGeometry();
+const points = new THREE.Points(ptGeo, new THREE.ShaderMaterial({ uniforms: U, vertexShader: PT_VS, fragmentShader: PT_FS, transparent: true, depthTest: false, depthWrite: false }));
+points.frustumCulled = false; points.renderOrder = 1; scene.add(points);
+function buildGrid() {
+  const asp = innerWidth / innerHeight;
+  const gx = Math.round(Math.sqrt(NP * asp)), gy = Math.round(NP / gx);
+  const a = new Float32Array(gx * gy * 2);
+  let k = 0; for (let y = 0; y < gy; y++) for (let x = 0; x < gx; x++) { a[k++] = x; a[k++] = y; }
+  ptGeo.setAttribute('aCell', new THREE.BufferAttribute(a, 2));
+  ptGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(gx * gy * 3), 3));
+  ptGeo.setDrawRange(0, gx * gy);
+  U.uGrid.value.set(gx, gy);
+  U.uPt.value = (W() / gx) * 1.18;
+}
+buildGrid();
+
+const AMB_N = IS_MOBILE ? 2200 : 4500;
+const ambGeo = new THREE.BufferGeometry();
+{ const s = new Float32Array(AMB_N * 4); for (let i = 0; i < s.length; i++) s[i] = Math.random();
+  ambGeo.setAttribute('aSeed', new THREE.BufferAttribute(s, 4)); ambGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(AMB_N * 3), 3)); }
+const amb = new THREE.Points(ambGeo, new THREE.ShaderMaterial({ uniforms: AU, vertexShader: AMB_VS, fragmentShader: AMB_FS, transparent: true, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending }));
+amb.frustumCulled = false; amb.renderOrder = 2; scene.add(amb);
+
+const composer = new EffectComposer(renderer);
+composer.setPixelRatio(DPR); composer.setSize(innerWidth, innerHeight);
+composer.addPass(new RenderPass(scene, cam));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.22, 0.6, 0.86);
+composer.addPass(bloom);
+const post = new ShaderPass(new THREE.ShaderMaterial({
+  uniforms: { tDiffuse: { value: null }, uRes: U.uRes, uTime: U.uTime, uCA: { value: 0.0012 }, uZoom: { value: 0 }, uFlash: { value: 0 }, uGrain: { value: 0.05 }, uVig: { value: 0.6 } },
+  vertexShader: /* glsl */`varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position, 1.0); }`,
+  fragmentShader: POST_FS,
+}));
+composer.addPass(post); composer.addPass(new OutputPass());
+
+/* -----------------------------------------------------------------
+   STATE + per-frame layer setup
+   ----------------------------------------------------------------- */
+const TEX = {};
+const ST = { a: 0, b: 0, type: 6, t: 0, black: 1, flash: 0, ca: 0.0012, zoom: 0, burst: 0 };
+const AMBW = { w0: 0, w1: 0, w2: 0, w3: 0, w4: 0 };
+const par = new THREE.Vector2(), parT = new THREE.Vector2();
+const ease = x => x * x * (3 - 2 * x);
+const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+
+function camOf(i) {
+  const s = SHOTS[i], p = ease(s.p);
+  const z = (s.z0 + (s.z1 - s.z0) * s.p) * (1 + s.kick);
+  return { cx: s.c0[0] + (s.c1[0] - s.c0[0]) * p + par.x * 0.012 / z, cy: s.c0[1] + (s.c1[1] - s.c0[1]) * p + par.y * 0.01 / z, z };
+}
+function rectOf(i) {
+  const s = SHOTS[i]; if (!s.over) return [0, 0, 1, 1];
+  const p = s.p, sc = 1 + 0.07 * p, w = EAGLE_RECT[2] * sc, h = EAGLE_RECT[3] * sc;
+  const cx = EAGLE_RECT[0] + EAGLE_RECT[2] / 2 + 0.035 * p + par.x * 0.025, cy = EAGLE_RECT[1] + EAGLE_RECT[3] / 2 + 0.018 * Math.sin(p * Math.PI * 1.5) + par.y * 0.02;
+  return [cx - w / 2, cy - h / 2, w, h];
+}
+function setLayer(L, i, shift, blur, ang) {
+  const s = SHOTS[i], c = camOf(i), r = rectOf(i);
+  U['uTex' + L].value = TEX[s.img]; U['uOver' + L].value = s.over ? TEX[s.over] : TEX.mountain;
+  U['uInfo' + L].value.set(c.cx, c.cy, c.z, s.aspect);
+  U['uFx' + L].value.set(s.fx, s.over ? 1 : 0, s.blur + blur, s.blur > 0 && blur === 0 ? 0 : ang);
+  U['uRect' + L].value.set(...r);
+  U['uSh' + L].value.set(shift[0], shift[1]);
+}
+// image uv -> screen position, for the transition focus point
+function uvToScreen(i, uv) {
+  const s = SHOTS[i], c = camOf(i), sa = innerWidth / innerHeight, ia = s.aspect;
+  const fit = sa > ia ? [1, ia / sa] : [sa / ia, 1];
+  const hx = 0.5 * fit[0] / c.z, hy = 0.5 * fit[1] / c.z;
+  const cx = Math.min(Math.max(c.cx, hx), 1 - hx), cy = Math.min(Math.max(c.cy, hy), 1 - hy);
+  return [(uv[0] - cx) / (fit[0] / c.z) + 0.5, (uv[1] - cy) / (fit[1] / c.z) + 0.5];
+}
+function frameUniforms() {
+  const k = ST.t, T = ST.type;
+  let shA = [0, 0], shB = [0, 0], bl = 0, ang = 0, mix = 0;
+  if (T === 2) { const e = ease(k); shA = [-e * 0.55, 0]; shB = [(1 - e) * 0.55, 0]; bl = Math.sin(Math.PI * k) * 0.07; mix = sstep(0.42, 0.58, k); }
+  if (T === 3) { const e = ease(k); shA = [0, e * 0.6]; shB = [0, -(1 - e) * 0.6]; bl = Math.sin(Math.PI * k) * 0.08; ang = Math.PI / 2; mix = sstep(0.45, 0.55, k); }
+  setLayer('A', ST.a, shA, bl, ang);
+  setLayer('B', ST.b, shB, bl, ang);
+  U.uType.value = T; U.uT.value = k; U.uMix.value = mix; U.uBlackA.value = ST.black;
+  if (T === 1) U.uFocus.value.set(...uvToScreen(ST.a, [EAGLE_RECT[0] + EAGLE_RECT[2] / 2, EAGLE_RECT[1] + EAGLE_RECT[3] / 2]));
+  if (T === 5) U.uFocus.value.set(...uvToScreen(ST.a, [0.62, 0.42]));
+  points.visible = T === 1 || T >= 4;
+  post.uniforms.uFlash.value = ST.flash;
+  post.uniforms.uCA.value = REDUCED ? 0.0012 : ST.ca;
+  post.uniforms.uZoom.value = REDUCED ? 0 : ST.zoom;
+  AU.uBurst.value = ST.burst;
+  for (let i = 0; i < 5; i++) AU['uW' + i].value = AMBW['w' + i];
+}
+
+/* -----------------------------------------------------------------
+   CAPTIONS + UI
+   ----------------------------------------------------------------- */
+let shownChapter = -1;
+function caption(i) {
+  const c = CHAPTERS[i]; shownChapter = i;
+  $('#chapNum').textContent = `Chapitre ${c.num}`; $('#chapHab').textContent = c.hab;
+  $('#latin').textContent = c.latin; $('#fact').innerHTML = c.fact;
+  const h = $('#name'); h.innerHTML = c.name.split('').map(ch => `<span class="ch">${ch === ' ' ? '&nbsp;' : ch}</span>`).join('');
+  gsap.fromTo(h.querySelectorAll('.ch'), { yPercent: 115, opacity: 0 }, { yPercent: 0, opacity: 1, duration: 1.2, stagger: 0.035, ease: 'expo.out' });
+  gsap.fromTo(['#chap', '#latin', '#fact'], { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 1, stagger: 0.1, delay: 0.2, ease: 'power3.out' });
+}
+function hideCaption() {
+  gsap.to('#name .ch', { yPercent: -115, opacity: 0, duration: 0.5, stagger: 0.015, ease: 'expo.in' });
+  gsap.to(['#chap', '#latin', '#fact'], { opacity: 0, y: -8, duration: 0.45, ease: 'power2.in' });
+}
+const creditsEl = $('#credits'), creditsBtn = $('#creditsBtn');
+$('#creditList').innerHTML = ASSETS.credits.map(c =>
+  `<li><b>${c.subject}</b> : ${c.author}, <a href="${c.page}" target="_blank" rel="noopener">${c.license}</a></li>`).join('');
+creditsBtn.addEventListener('click', () => { creditsEl.hidden = !creditsEl.hidden; creditsBtn.setAttribute('aria-expanded', String(!creditsEl.hidden)); });
+addEventListener('keydown', e => { if (e.key === 'Escape') { creditsEl.hidden = true; creditsBtn.setAttribute('aria-expanded', 'false'); } });
+addEventListener('pointermove', e => { parT.set((e.clientX / innerWidth) * 2 - 1, -((e.clientY / innerHeight) * 2 - 1)); });
+
+/* -----------------------------------------------------------------
+   THE FILM — one GSAP timeline
+   ----------------------------------------------------------------- */
+const pair = (a, b, type, black = 0) => { ST.a = a; ST.b = b; ST.type = type; ST.t = 0; ST.black = black; };
+const ambTo = (o, at, d = 1.6) => tl.to(AMBW, { w0: 0, w1: 0, w2: 0, w3: 0, w4: 0, ...o, duration: d, ease: 'sine.inOut' }, at);
+const fx = (at, ca, zoom, up = 0.35, down = 1.2) => tl.to(ST, { ca, zoom, duration: up, ease: 'expo.in' }, at).to(ST, { ca: 0.0012, zoom: 0, duration: down, ease: 'power3.out' }, at + up);
+const tl = gsap.timeline({ paused: true });
+const END = 36;
+//              INTRO    hold eagle  FEATHERS    hold tiger  WHIP       leap       DIVE        underwater  BURST       splash      SPRAY       whale
+const T = { intro: 0, f: 7.4, whip: 14.0, dive: 16.4, burst: 19.9, spray: 23.3 };
+tl.call(() => pair(0, 0, 6, 1), null, 0)
+  .to(ST, { t: 1, duration: 2.6, ease: 'power2.out' }, 0)
+  .call(() => pair(0, 0, 0), null, 2.6)
+  .to(SHOTS[0], { p: 1, duration: T.f + 3.4, ease: 'none' }, 0)
+  .call(() => caption(0), null, 1.4);
+ambTo({ w0: 1 }, 0.6, 2.4);
+// I → II : the plumage leaves on the wind and uncovers the tiger
+tl.call(() => { pair(0, 1, 1); hideCaption(); }, null, T.f)
+  .to(ST, { t: 1, duration: 3.4, ease: 'none' }, T.f)
+  .call(() => pair(1, 1, 0), null, T.f + 3.4)
+  .to(SHOTS[1], { p: 1, duration: 3.4 + 3.2 + 0.8, ease: 'none' }, T.f)
+  .call(() => caption(1), null, T.f + 2.0);
+fx(T.f, 0.006, 0.05, 0.6, 2.0);
+ambTo({ w1: 1 }, T.f + 1.0, 2.2);
+// anticipation: the camera tightens on the tiger before it springs
+tl.to(SHOTS[1], { kick: 0.14, duration: 0.8, ease: 'power2.in' }, T.whip - 0.8);
+// the leap — whip pan
+tl.call(() => pair(1, 2, 2), null, T.whip)
+  .to(ST, { t: 1, duration: 0.8, ease: 'power2.inOut' }, T.whip)
+  .call(() => pair(2, 2, 0), null, T.whip + 0.8)
+  .to(SHOTS[2], { p: 1, duration: 0.8 + 1.6 + 1.1, ease: 'none' }, T.whip);
+fx(T.whip, 0.018, 0.14, 0.4, 0.8);
+ambTo({ w2: 1 }, T.whip + 0.2, 0.5);
+// the dive — camera plunges with the tiger, impact flash, bubbles
+tl.call(() => pair(2, 3, 3), null, T.dive)
+  .to(ST, { t: 1, duration: 1.1, ease: 'power2.in' }, T.dive)
+  .call(() => pair(3, 3, 0), null, T.dive + 1.1)
+  .to(SHOTS[3], { p: 1, duration: 1.1 + 2.4 + 2.4, ease: 'none' }, T.dive)
+  .to(ST, { flash: 0.55, duration: 0.12, ease: 'none' }, T.dive + 0.5)
+  .to(ST, { flash: 0, duration: 0.9, ease: 'power2.out' }, T.dive + 0.62)
+  .to(ST, { burst: 1, duration: 0.3 }, T.dive + 0.5).to(ST, { burst: 0, duration: 1.8, ease: 'power2.out' }, T.dive + 0.8);
+fx(T.dive, 0.02, 0.12, 0.5, 1.0);
+ambTo({ w3: 1 }, T.dive + 0.45, 0.4);
+// underwater → the water bursts upward into a towering splash
+tl.call(() => { pair(3, 4, 4); hideCaption(); }, null, T.burst)
+  .to(ST, { t: 1, duration: 2.4, ease: 'none' }, T.burst)
+  .call(() => pair(4, 4, 0), null, T.burst + 2.4)
+  .to(SHOTS[4], { p: 1, duration: 2.4 + 1.0 + 2.6, ease: 'none' }, T.burst);
+fx(T.burst, 0.01, 0.07, 0.5, 1.4);
+ambTo({ w4: 1 }, T.burst + 0.6, 1.6);
+// the spray settles into the whale
+tl.call(() => pair(4, 5, 5), null, T.spray)
+  .to(ST, { t: 1, duration: 2.6, ease: 'none' }, T.spray)
+  .call(() => pair(5, 5, 0), null, T.spray + 2.6)
+  .to(SHOTS[5], { p: 1, duration: END - T.spray, ease: 'none' }, T.spray)
+  .call(() => caption(2), null, T.spray + 1.6);
+fx(T.spray, 0.009, 0.06, 0.5, 1.6);
+ambTo({ w4: 0.75 }, T.spray + 2.2, 2.0);
+tl.call(() => gsap.to('#replay', { autoAlpha: 1, duration: 0.8 }), null, T.spray + 5.2);
+const CH_RANGE = [[0, T.f + 3.4], [T.f + 3.4, T.burst + 2.4], [T.burst + 2.4, T.spray + 5.2]];
+
+$('#replay').addEventListener('click', () => {
+  gsap.to('#replay', { autoAlpha: 0, duration: 0.3 });
+  hideCaption();
+  tl.restart();
+});
+
+/* -----------------------------------------------------------------
+   BOOT
+   ----------------------------------------------------------------- */
+async function boot() {
+  const keys = ['mountain', 'eagle', 'tiger_rock', 'tiger_leap', 'tiger_under', 'splash', 'whale'];
+  const texs = await Promise.all(keys.map(k => loadTex(ASSETS.images[k])));
+  keys.forEach((k, i) => { TEX[k] = texs[i]; });
+  frameUniforms();
+  renderer.compile(scene, cam);
+  composer.render(0);
+  $('#loader').style.opacity = 0; setTimeout(() => $('#loader').remove(), 1100);
+  gsap.to('.brand', { opacity: 1, duration: 1.4, delay: 0.6 });
+  gsap.to('#rail', { opacity: 1, duration: 1.4, delay: 1.2 });
+  tl.play(0);
+  if (location.hash === '#debug') window.__film = { tl, ST, SHOTS };   // test hook
+  const segs = [...document.querySelectorAll('.seg')];
+  let last = performance.now(), time = 0;
+  renderer.setAnimationLoop(() => {
+    const now = performance.now(), dt = Math.min((now - last) / 1000, 0.05); last = now; time += dt;
+    U.uTime.value = time;
+    // smoothed parallax; without a mouse, a slow handheld drift
+    const idle = IS_MOBILE ? [Math.sin(time * 0.31) * 0.5, Math.sin(time * 0.23) * 0.35] : [parT.x, parT.y];
+    par.x += (idle[0] - par.x) * (1 - Math.exp(-dt * 2.5)); par.y += (idle[1] - par.y) * (1 - Math.exp(-dt * 2.5));
+    AU.uPar.value.copy(par);
+    frameUniforms();
+    composer.render(dt);
+    const tt = tl.time();
+    segs.forEach((el, i) => {
+      const [a, b] = CH_RANGE[i]; const p = Math.min(1, Math.max(0, (tt - a) / (b - a)));
+      el.querySelector('u').style.setProperty('--p', p.toFixed(3)); el.classList.toggle('on', tt >= a && tt < b + (i === 2 ? 99 : 0));
+    });
+  });
+}
+addEventListener('resize', () => {
+  renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight);
+  U.uRes.value.set(W(), H()); buildGrid();
+});
+boot().catch(e => { console.error(e); $('#err').style.display = 'grid'; $('#err').textContent = 'Erreur de chargement : ' + e.message; });
+</script>
+</body>
+</html>
