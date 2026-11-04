@@ -144,7 +144,7 @@ const SHOTS = [
   { img: 'tiger_leap', aspect: 1920 / 1280, c0: [0.30, 0.58], c1: [0.47, 0.60], z0: 1.16, z1: 1.32, fx: 1, blur: 0.0045 },
   { img: 'tiger_under', aspect: 1920 / 1280, c0: [0.55, 0.60], c1: [0.47, 0.52], z0: 1.0, z1: 1.2, fx: 2, blur: 0 },
   { img: 'splash', aspect: 1920 / 1280, c0: [0.62, 0.45], c1: [0.60, 0.48], z0: 1.0, z1: 1.18, fx: 0, blur: 0 },
-  { img: 'whale', aspect: 1920 / 1248, c0: [0.48, 0.55], c1: [0.55, 0.60], z0: 1.0, z1: 1.12, fx: 0, blur: 0 },
+  { img: 'whale', aspect: 1920 / 1248, c0: [0.50, 0.50], c1: [0.57, 0.45], z0: 1.0, z1: 1.12, fx: 0, blur: 0 },
 ];
 SHOTS.forEach(s => { s.p = 0; s.kick = 0; });
 const CHAPTERS = [
@@ -229,7 +229,7 @@ void main(){
     vec4 A = uBlackA > 0.5 ? vec4(0.0) : sampleLayer(uTexA, uOverA, uInfoA, uFxA, uRectA, s - uShA);
     vec4 B = sampleLayer(uTexB, uOverB, uInfoB, uFxB, uRectB, s - uShB);
     // what lies beneath the departing particles: the next photo, still dim, already there
-    vec3 base = uType < 1.5 ? mix(A.rgb*0.3, B.rgb*0.75, smoothstep(0.05, 0.6, e)) : mix(A.rgb, B.rgb, e)*0.2;
+    vec3 base = mix(A.rgb*0.3, B.rgb*0.78, smoothstep(0.05, 0.6, e));
     col = mix(base, A.rgb, 1.0 - smoothstep(0.0, 0.05, e));
     col = mix(col, B.rgb, smoothstep(0.88, 1.0, e));
   } else {
