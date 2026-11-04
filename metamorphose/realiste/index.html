@@ -21,6 +21,10 @@
   html,body{height:100%;background:var(--bg);color:var(--fg);overflow:hidden;font-family:var(--body);-webkit-font-smoothing:antialiased}
   #gl{position:fixed;inset:0;width:100%;height:100%;display:block}
   .ui{position:fixed;z-index:3;pointer-events:none}
+  /* soft scrim so the caption reads on snow, spray and sky */
+  .scrim{position:fixed;inset:auto 0 0 0;height:62vh;z-index:2;pointer-events:none;
+    background:linear-gradient(to top,rgba(5,6,8,.62),rgba(5,6,8,.28) 45%,rgba(5,6,8,0)),radial-gradient(120% 90% at 0% 100%,rgba(5,6,8,.45),rgba(5,6,8,0) 60%)}
+  .scrim.top{inset:0 0 auto 0;height:22vh;background:linear-gradient(to bottom,rgba(5,6,8,.4),rgba(5,6,8,0))}
   .ui button,.ui a{pointer-events:auto}
 
   .brand{top:calc(26px + env(safe-area-inset-top,0px));left:max(28px,env(safe-area-inset-left,0px));opacity:0}
@@ -87,6 +91,7 @@
 <canvas id="gl" aria-label="Court-métrage : métamorphose d'un aigle en tigre puis en baleine"></canvas>
 <div id="loader"><div>Métamorphose</div></div>
 <div id="err"></div>
+<div class="scrim" aria-hidden="true"></div><div class="scrim top" aria-hidden="true"></div>
 
 <header class="ui brand"><b>MÉTAMORPHOSE</b><span>Seamless Animal &amp; Ecosystem Morphing</span></header>
 
@@ -223,7 +228,8 @@ void main(){
     float e = localE(tDelay(sc, maskA, r));
     vec4 A = uBlackA > 0.5 ? vec4(0.0) : sampleLayer(uTexA, uOverA, uInfoA, uFxA, uRectA, s - uShA);
     vec4 B = sampleLayer(uTexB, uOverB, uInfoB, uFxB, uRectB, s - uShB);
-    vec3 base = mix(A.rgb, B.rgb, e)*0.16;
+    // what lies beneath the departing particles: the next photo, still dim, already there
+    vec3 base = uType < 1.5 ? mix(A.rgb*0.3, B.rgb*0.75, smoothstep(0.05, 0.6, e)) : mix(A.rgb, B.rgb, e)*0.2;
     col = mix(base, A.rgb, 1.0 - smoothstep(0.0, 0.05, e));
     col = mix(col, B.rgb, smoothstep(0.88, 1.0, e));
   } else {
@@ -256,12 +262,13 @@ void main(){
       float k = pow(e, 1.35);
       p += (vec2(0.75 + 0.7*r, 0.32 + 0.45*r3) + flow*0.35)*k*vec2(1.0/asp*1.5, 1.0);
       p.x += sin(uTime*2.6 + r*30.0)*0.012*k;
-      size = 1.0 + 3.6*k*(0.5 + r2);
+      size = 1.0 + 6.0*k*(0.5 + r2);
       alpha = 1.0 - smoothstep(0.65, 1.0, e);
       col = mix(A.rgb, A.rgb*1.15, k);
     } else {
-      p += (flow*0.1 + vec2(0.07, 0.035))*tr*vec2(1.0/asp*1.6, 1.0);
-      size = 1.0 + 1.4*tr*r2;
+      p += (flow*0.24 + vec2(0.18, 0.07))*tr*vec2(1.0/asp*1.6, 1.0);
+      p.y += sin(uTime*1.9 + r*25.0)*0.01*tr;
+      size = 1.0 + 2.6*tr*r2;
     }
   } else if (uType < 4.5) {                // BURST — water explodes upward, droplets arc and fall
     p.y += (e - e*e)*4.0*(0.18 + 0.42*r2);
@@ -322,7 +329,7 @@ void main(){
   if (kind < 0.5) { p += vec2(0.035, -0.08)*t*(0.4 + z) + vec2(sin(t*0.8 + rr*40.0)*0.012, 0.0); size = mix(1.6, 10.0, z*z); col = vec3(1.0); a = 0.55 + 0.35*z; }
   else if (kind < 1.5) { p += vec2(sin(t*0.13 + rr*50.0)*0.05, t*0.01*(0.5 + z)); size = mix(1.4, 6.0, z*z); col = vec3(1.0, 0.86, 0.58)*(0.8 + 1.8*pow(0.5 + 0.5*sin(t*1.7 + rr*90.0), 8.0)); a = 0.55; }
   else if (kind < 2.5) { p += vec2(-1.4, 0.0)*t*(0.5 + z); size = mix(3.0, 14.0, z*z); col = vec3(1.0, 0.85, 0.55); a = 0.32; }
-  else if (kind < 3.5) { p += vec2(sin(t*2.0 + rr*30.0)*0.01, t*(0.05 + 0.12*z)); p.y += uBurst*z*0.6; size = mix(3.0, 18.0, z*z); col = vec3(0.86, 0.97, 1.0); a = 0.75; }
+  else if (kind < 3.5) { p += vec2(sin(t*2.0 + rr*30.0)*0.01, t*(0.05 + 0.12*z)); p.y += uBurst*z*0.6; size = mix(2.5, 11.0, z*z*z); col = vec3(0.86, 0.97, 1.0); a = (rr < 0.4 + 0.6*uBurst ? 0.42 : 0.0); }
   else { p += vec2(0.012*sin(rr*9.0 + t*0.5), -t*(0.05 + 0.18*z)); size = mix(1.8, 9.0, z*z); col = vec3(0.95, 0.98, 1.0); a = 0.7; }
   p = fract(p) + uPar*z*0.02;
   gl_Position = vec4(p*2.0 - 1.0, 0.0, 1.0);
@@ -340,7 +347,7 @@ void main(){
 }`;
 
 const POST_FS = /* glsl */`
-uniform sampler2D tDiffuse; uniform vec2 uRes; uniform float uTime, uCA, uZoom, uFlash, uGrain, uVig;
+uniform sampler2D tDiffuse; uniform vec2 uRes; uniform float uTime, uCA, uZoom, uFlash, uGrain, uVig; uniform vec3 uFlashCol;
 varying vec2 vUv;
 vec3 sampleCA(vec2 uv){ vec2 d = uv - 0.5; vec2 o = d*uCA*(0.4 + length(d)*1.6);
   return vec3(texture2D(tDiffuse, uv + o).r, texture2D(tDiffuse, uv).g, texture2D(tDiffuse, uv - o).b); }
@@ -348,7 +355,7 @@ void main(){
   vec3 col;
   if (uZoom > 0.002) { col = vec3(0.0); for (int i = 0; i < 12; i++) col += sampleCA(0.5 + (vUv - 0.5)*(1.0 - uZoom*float(i)/11.0)); col /= 12.0; }
   else col = sampleCA(vUv);
-  col += uFlash*vec3(1.0, 0.98, 0.95);
+  col = mix(col, uFlashCol, clamp(uFlash, 0.0, 1.0));
   vec2 d = vUv - 0.5; d.x *= uRes.x/uRes.y;
   col *= mix(1.0, smoothstep(1.1, 0.3, length(d)), uVig);
   float g = fract(sin(dot(vUv*uRes + fract(uTime*7.3)*61.7, vec2(12.9898, 78.233)))*43758.5453);
@@ -417,7 +424,7 @@ composer.addPass(new RenderPass(scene, cam));
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.22, 0.6, 0.86);
 composer.addPass(bloom);
 const post = new ShaderPass(new THREE.ShaderMaterial({
-  uniforms: { tDiffuse: { value: null }, uRes: U.uRes, uTime: U.uTime, uCA: { value: 0.0012 }, uZoom: { value: 0 }, uFlash: { value: 0 }, uGrain: { value: 0.05 }, uVig: { value: 0.6 } },
+  uniforms: { tDiffuse: { value: null }, uRes: U.uRes, uTime: U.uTime, uCA: { value: 0.0012 }, uZoom: { value: 0 }, uFlash: { value: 0 }, uFlashCol: { value: new THREE.Color(0.75, 0.93, 1.0) }, uGrain: { value: 0.05 }, uVig: { value: 0.6 } },
   vertexShader: /* glsl */`varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position, 1.0); }`,
   fragmentShader: POST_FS,
 }));
@@ -528,11 +535,12 @@ ambTo({ w1: 1 }, T.f + 1.0, 2.2);
 // anticipation: the camera tightens on the tiger before it springs
 tl.to(SHOTS[1], { kick: 0.14, duration: 0.8, ease: 'power2.in' }, T.whip - 0.8);
 // the leap — whip pan
-tl.call(() => pair(1, 2, 2), null, T.whip)
+tl.call(hideCaption, null, T.whip - 0.35)
+  .call(() => pair(1, 2, 2), null, T.whip)
   .to(ST, { t: 1, duration: 0.8, ease: 'power2.inOut' }, T.whip)
   .call(() => pair(2, 2, 0), null, T.whip + 0.8)
   .to(SHOTS[2], { p: 1, duration: 0.8 + 1.6 + 1.1, ease: 'none' }, T.whip);
-fx(T.whip, 0.018, 0.14, 0.4, 0.8);
+fx(T.whip, 0.016, 0.08, 0.4, 0.8);
 ambTo({ w2: 1 }, T.whip + 0.2, 0.5);
 // the dive — camera plunges with the tiger, impact flash, bubbles
 tl.call(() => pair(2, 3, 3), null, T.dive)
