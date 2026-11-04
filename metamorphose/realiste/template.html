@@ -139,12 +139,12 @@ const NP = IS_MOBILE ? 90000 : 210000;      // morph particles (one per screen c
    ----------------------------------------------------------------- */
 const EAGLE_RECT = [0.33, 0.432, 0.42, 0.42 * (891 / 1105) * (1920 / 1280)];   // eagle cut-out placed on the Pirin photo
 const SHOTS = [
-  { img: 'mountain', over: 'eagle', aspect: 1920 / 1280, c0: [0.52, 0.58], c1: [0.55, 0.64], z0: 1.0, z1: 1.14, fx: 0, blur: 0 },
-  { img: 'tiger_rock', aspect: 1920 / 1282, c0: [0.60, 0.50], c1: [0.72, 0.58], z0: 1.0, z1: 1.22, fx: 0, blur: 0 },
-  { img: 'tiger_leap', aspect: 1920 / 1280, c0: [0.30, 0.58], c1: [0.47, 0.60], z0: 1.16, z1: 1.32, fx: 1, blur: 0.0045 },
+  { img: 'mountain', over: 'eagle', aspect: 1920 / 1280, c0: [0.52, 0.58], c1: [0.55, 0.64], pc0: [0.6, 0.62], pc1: [0.63, 0.64], z0: 1.0, z1: 1.14, fx: 0, blur: 0 },
+  { img: 'tiger_rock', aspect: 1920 / 1282, c0: [0.60, 0.50], c1: [0.72, 0.58], pc0: [0.71, 0.52], pc1: [0.74, 0.6], z0: 1.0, z1: 1.22, fx: 0, blur: 0 },
+  { img: 'tiger_leap', aspect: 1920 / 1280, c0: [0.30, 0.58], c1: [0.47, 0.60], pc0: [0.36, 0.6], pc1: [0.47, 0.6], z0: 1.16, z1: 1.32, fx: 1, blur: 0.0045 },
   { img: 'tiger_under', aspect: 1920 / 1280, c0: [0.55, 0.60], c1: [0.47, 0.52], z0: 1.0, z1: 1.2, fx: 2, blur: 0 },
   { img: 'splash', aspect: 1920 / 1280, c0: [0.62, 0.45], c1: [0.60, 0.48], z0: 1.0, z1: 1.18, fx: 0, blur: 0 },
-  { img: 'whale', aspect: 1920 / 1248, c0: [0.50, 0.50], c1: [0.57, 0.45], z0: 1.0, z1: 1.12, fx: 0, blur: 0 },
+  { img: 'whale', aspect: 1920 / 1248, c0: [0.50, 0.50], c1: [0.57, 0.45], pc0: [0.52, 0.5], pc1: [0.62, 0.5], z0: 1.0, z1: 1.12, fx: 0, blur: 0 },
 ];
 SHOTS.forEach(s => { s.p = 0; s.kick = 0; });
 const CHAPTERS = [
@@ -443,7 +443,9 @@ const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a)
 function camOf(i) {
   const s = SHOTS[i], p = ease(s.p);
   const z = (s.z0 + (s.z1 - s.z0) * s.p) * (1 + s.kick);
-  return { cx: s.c0[0] + (s.c1[0] - s.c0[0]) * p + par.x * 0.012 / z, cy: s.c0[1] + (s.c1[1] - s.c0[1]) * p + par.y * 0.01 / z, z };
+  const portrait = innerWidth / innerHeight < 0.9 && s.pc0;           // narrow screens keep the animal in frame
+  const c0 = portrait ? s.pc0 : s.c0, c1 = portrait ? s.pc1 : s.c1;
+  return { cx: c0[0] + (c1[0] - c0[0]) * p + par.x * 0.012 / z, cy: c0[1] + (c1[1] - c0[1]) * p + par.y * 0.01 / z, z };
 }
 function rectOf(i) {
   const s = SHOTS[i]; if (!s.over) return [0, 0, 1, 1];
