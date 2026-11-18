@@ -1,4 +1,4 @@
-# Bot Day Trader — cahier des charges (v0.8)
+# Bot Day Trader — cahier des charges (v0.9)
 
 ## Choix actés
 - Objectif prioritaire : le meilleur rendement monétaire (capital + coffre à l'arrivée). Le choix entre les variantes se fera sur données réelles. La mort sous 65 % de PV reste une contrainte dure.
@@ -126,6 +126,24 @@ g(f) = f·μ − f²·σ²/2, maximale en f* = μ/σ² (μ : rendement moyen ann
 - Ces f* sont calculés après coup : l'erreur sur μ (≈ σ/√années ≈ ±0,3) rend f* très incertain. D'où l'usage d'une fraction de Kelly.
 - Fraction c de Kelly : croissance = c(2 − c) du maximum ; P(passer un jour sous 65 % du plus haut) = 0,65^(2/c − 1) (marche brownienne, horizon infini, queues fines : optimiste pour la crypto). c = 1 → 65 % de mort ; c = 0,5 → 75 % de la croissance, 27 % de mort ; c = 0,25 → 44 %, 5 %.
 - La vol cible 30 % de la v2 correspond à c ≈ 0,35 sur BTC (0,30/0,75 = 0,40 investi, f* = 1,13).
+
+## Test ½ Kelly sur les paires 13 à 24 (18/11/2026)
+Protocole figé avant téléchargement : `protocole_kelly.md`. μ estimé sur les données déjà vues (`estimer_mu.py`) : μ1 = 1,40 ± 0,21 (rendement attendu = μ1 · signal) ; μ0 = 0,64. Mise f = min(1, ½ · μ1 · s / σ²).
+Paires : MATIC, BTT, ATOM, VET, XMR, NEO, ONT, XTZ, WIN, QTUM, IOST, IOTA (MATIC, BTT, XMR retirées en cours de route). Acheter-garder y fait 36 € en médiane : univers très baissier après 2021.
+
+| 12 paires, 2020-2026 | A | C | K0 | K1 | K2 | K3 | (RK) |
+|---|---|---|---|---|---|---|---|
+| total médian € | 36 | 157 | 197 | 213 | 345 | 407 | 285 |
+| > C | 3/12 | – | 8 | 11 | 12 | 12 | 11 |
+| morts | – | 0 | 12 | 10 | 12 | 12 | 0 (repli 74 %) |
+| fenêtres 2 ans : médian € / % morts | 58 / – | 115 / 0 % | 95 / 95 % | 117 / 30 % | 117 / 89 % | 113 / 88 % | 111 / 0 % |
+
+- À la lettre de la règle 1 du protocole, K3 serait retenue. MAIS : K3 meurt sur les 12 paires, toujours juste après le sommet 2021-2022 (entre ×1,2 et ×61 de hausse), puis reste en cash pendant que ces paires chutent de 50 à 96 %. Son total vient d'une mort bien placée dans un univers qui s'effondre, pas d'un avantage reproductible. Sur les fenêtres de 2 ans, K2/K3 font comme C (113-117 €) en mourant ~9 fois sur 10.
+- Erreur de protocole (Claude) : la règle « un bot mort garde son total » contredit le cahier (« bot mort = éliminé »). Avec la règle du cahier, K0-K3 sont toutes éliminées → **C reste la variante retenue**.
+- μ1 mesuré sur les paires 13-24 : 1,45 (estimé 1,40). Les morts ne viennent pas d'une mauvaise estimation de μ : les replis réels sont bien plus profonds que la théorie (queues épaisses, retournements de tendance détectés en retard). Théorie : 27 % de mort à ½ Kelly ; observé : ~90 % en 2 ans.
+- Le signal de tendance se confirme hors échantillon : μ ≈ +1,72/an quand s = 1, ≈ 0 ou négatif quand s ≤ 0,25.
+- Conclusion : ½ Kelly et la mort à 65 % sont incompatibles. Avec la règle des 65 %, il faut une mise de l'ordre de C (≈ ⅓ Kelly ou moins).
+- Idée à tester (née de ce test, donc à juger sur données neuves) : remplacer la « mort » définitive par un disjoncteur (sortie à −35 %, retour quand la tendance redevient haussière).
 
 ## Prochaines étapes
 - ~~Accès Binance, données, protocole de choix~~ : fait le 18/11/2026 (voir Résultats). Variante retenue : C.
