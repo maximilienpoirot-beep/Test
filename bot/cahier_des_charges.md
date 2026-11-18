@@ -119,6 +119,14 @@ Conclusions (selon les critères fixés à l'avance) :
 3. F (achat à la baisse pur) est rejetée : 88 € médian, 4 morts. Acheter les creux sans filtre de tendance = rattraper un couteau qui tombe.
 4. Constat majeur : (R) sans survie ni coffre bat C sur 12/12 paires (342 € contre 165 €), mais son repli médian de 38 % dépasse le seuil de mort. Ce qui coûte du rendement, c'est la règle des 65 % + le coffre (la moitié de chaque gain sort du jeu et ne compose plus), pas le signal.
 
+## Rendement et risque : critère de Kelly (kelly.py)
+Avec une fraction f fixe investie (rééquilibrée à chaque bougie), la croissance annuelle (log) est une parabole :
+g(f) = f·μ − f²·σ²/2, maximale en f* = μ/σ² (μ : rendement moyen annuel, σ : volatilité annuelle). La théorie colle à la simulation sur données réelles.
+- BTC 2017-2023 : g(f) = 0,64·f − 0,28·f², f* = 1,13 ; ETH : g(f) = 0,75·f − 0,43·f², f* = 0,86. Sur les 12 altcoins 2020-2026, f* est entre 0,28 et 1,43 (médiane ≈ 0,7). Pour EOS, tout investi donne −22 %/an en log alors que f* donne +4 %/an.
+- Ces f* sont calculés après coup : l'erreur sur μ (≈ σ/√années ≈ ±0,3) rend f* très incertain. D'où l'usage d'une fraction de Kelly.
+- Fraction c de Kelly : croissance = c(2 − c) du maximum ; P(passer un jour sous 65 % du plus haut) = 0,65^(2/c − 1) (marche brownienne, horizon infini, queues fines : optimiste pour la crypto). c = 1 → 65 % de mort ; c = 0,5 → 75 % de la croissance, 27 % de mort ; c = 0,25 → 44 %, 5 %.
+- La vol cible 30 % de la v2 correspond à c ≈ 0,35 sur BTC (0,30/0,75 = 0,40 investi, f* = 1,13).
+
 ## Prochaines étapes
 - ~~Accès Binance, données, protocole de choix~~ : fait le 18/11/2026 (voir Résultats). Variante retenue : C.
 - Décider avec Maximilien : garder la mort à 65 % et le coffre à 50 %, ou les assouplir (c'est là qu'est le rendement perdu)
