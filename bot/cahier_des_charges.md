@@ -1,4 +1,4 @@
-# Bot Day Trader — cahier des charges (v0.7)
+# Bot Day Trader — cahier des charges (v0.8)
 
 ## Choix actés
 - Objectif prioritaire : le meilleur rendement monétaire (capital + coffre à l'arrivée). Le choix entre les variantes se fera sur données réelles. La mort sous 65 % de PV reste une contrainte dure.
@@ -97,8 +97,31 @@ Régression ln(capital) = a + b·t (t en années) : BTC A b = 0,099 (+10 %/an), 
 - acheter-garder franchirait le seuil de mort (–35 %) dans toutes les périodes : avec la règle des 65 %, il n'est pas jouable tel quel.
 - La survie par défaut (B) coûte cher : en entraînement BTC, B finit à 100 € contre 240 € pour C. Hypothèse : piège « plus haut figé » (après un repli, la taille est réduite, donc le capital remonte trop lentement pour sortir de la zone orange). À vérifier.
 
+## Altcoins et achat à la baisse (18/11/2026)
+Protocole figé avant téléchargement : `protocole_altcoins.md` ; scripts `univers.py`, `test_altcoins.py`.
+- Univers : 12 premières paires USDT par volume de janvier 2020, paires retirées comprises (contre le biais du survivant) : BCH, ETC, EOS (retiré le 26/05/2025), XRP, LTC, BNB, DASH, TRX, LINK, ADA, ZEC, XLM. Période 2020 → 18/11/2026. Données propres (≤ 5 bougies manquantes par paire).
+- Nouvelles variantes (réglages de C) : F achat à la baisse pur (Bollinger 60 bougies, 2σ : entrée sous MM60 − 2σ, sortie au-dessus de MM60) ; G = C + pleine taille sur les creux quand le prix > MM480.
+
+| 12 paires, 2020-2026 | A | B | C | D | E | (R) | F | G |
+|---|---|---|---|---|---|---|---|---|
+| total médian € | 387 | 155 | 165 | 199 | 142 | 342 | 88 | 158 |
+| paires où > A | – | 4 | 4 | 5 | 5 | 6 | 3 | 5 |
+| morts | (12 ×) | 0 | 0 | 0 | 0 | 0 | 4 | 3 |
+| repli médian | 93 % | 17 % | 21 % | 16 % | 16 % | 38 % | 31 % | 23 % |
+
+Fenêtres de 2 ans (234) : C médian 120 € contre 117 € pour A, C bat A dans 50 % des cas.
+Régression sur les fenêtres : ln(C/100) = 0,151 + 0,202·ln(A/100), R² = 0,60.
+→ C encaisse ~20 % des mouvements du marché (en log) plus un bonus fixe de +16 % (e^0,151). C bat A quand A fait moins de 100·e^(0,151/0,798) ≈ 121 € sur 2 ans.
+
+Conclusions (selon les critères fixés à l'avance) :
+1. C contre A : A gagne nettement sur la période complète (387 € contre 165 € en médiane). Sur 2 ans, c'est pile ou face. C = assurance, pas rendement.
+2. G n'est pas retenue (médiane 158 € < 165 €, bat C sur 5/12 paires seulement, 3 morts).
+3. F (achat à la baisse pur) est rejetée : 88 € médian, 4 morts. Acheter les creux sans filtre de tendance = rattraper un couteau qui tombe.
+4. Constat majeur : (R) sans survie ni coffre bat C sur 12/12 paires (342 € contre 165 €), mais son repli médian de 38 % dépasse le seuil de mort. Ce qui coûte du rendement, c'est la règle des 65 % + le coffre (la moitié de chaque gain sort du jeu et ne compose plus), pas le signal.
+
 ## Prochaines étapes
 - ~~Accès Binance, données, protocole de choix~~ : fait le 18/11/2026 (voir Résultats). Variante retenue : C.
+- Décider avec Maximilien : garder la mort à 65 % et le coffre à 50 %, ou les assouplir (c'est là qu'est le rendement perdu)
 - Comprendre le piège de la survie par défaut (zone orange qui dure) ; la période de test étant consommée, toute nouvelle variante devra être jugée sur des données futures (suivi en papier) ou d'autres paires.
 - Suivi en papier de C sur les prix récents avant tout argent réel
 - Ensuite seulement : algorithme génétique sur 3-4 réglages max, avec validation en marche avant
