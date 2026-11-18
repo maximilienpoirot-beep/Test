@@ -148,3 +148,39 @@ def acheter_garder(prix, t0=WARMUP, frais=FRAIS, capital=100.0):
     pic = np.maximum.accumulate(eq)
     return {"final": float(eq[-1] * (1 - frais)), "max_dd": float(np.max(1 - eq / pic)),
             "mort": False, "trades": 1, "coffre": 0.0, "equity": eq}
+
+
+# ------------------------------------------------------- achat à la baisse
+def ecart_type_mobile(x, n):
+    out = np.full(len(x), np.nan)
+    c1 = np.cumsum(np.insert(x, 0, 0.0))
+    c2 = np.cumsum(np.insert(x ** 2, 0, 0.0))
+    m = (c1[n:] - c1[:-n]) / n
+    out[n - 1:] = np.sqrt(np.maximum((c2[n:] - c2[:-n]) / n - m ** 2, 0))
+    return out
+
+
+def signal_repli(prix, n=60, k=2.0):
+    """Achat à la baisse (bandes de Bollinger) : on entre quand le prix tombe sous
+    MM(n) - k écarts-types, on sort quand il repasse au-dessus de MM(n). 0 ou 1."""
+    mm, sd = moyenne_mobile(prix, n), ecart_type_mobile(prix, n)
+    s = np.full(len(prix), np.nan)
+    dedans = 0.0
+    for t in range(n - 1, len(prix)):
+        if dedans == 0.0 and prix[t] < mm[t] - k * sd[t]:
+            dedans = 1.0
+        elif dedans == 1.0 and prix[t] > mm[t]:
+            dedans = 0.0
+        s[t] = dedans
+    return s
+
+
+def signal_tendance_repli(prix, horizons=(60, 120, 240, 480)):
+    """v2 + achat des creux : si la tendance longue est haussière (prix > MM480)
+    et qu'un creux de Bollinger est en cours, on passe à pleine taille."""
+    s = signal_vote_mm(prix, horizons)
+    creux = signal_repli(prix) == 1.0
+    haussier = prix > moyenne_mobile(prix, max(horizons))
+    out = s.copy()
+    out[creux & haussier & ~np.isnan(s)] = 1.0
+    return out

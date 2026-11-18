@@ -18,7 +18,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
-from strategie import executer, acheter_garder, signal_vote_mm, echelle_vol
+from strategie import (executer, acheter_garder, signal_vote_mm, echelle_vol,
+                       signal_repli, signal_tendance_repli)
 from survie import ReglagesSurvie
 from strategie import reglages_sans_survie
 
@@ -42,7 +43,11 @@ VARIANTES = {      # code: (nom, vol cible, réglages survie) ; None = acheter-g
     "D": ("v2 + survie (vol 50 %)", 0.50, ReglagesSurvie),
     "E": ("v2 + survie (vol 70 %)", 0.70, ReglagesSurvie),
     "R": ("(réf.) v2 sans survie (vol 30 %)", 0.30, reglages_sans_survie),
+    # ajoutées le 18/11/2026 après le test BTC/ETH (achat à la baisse), réglages de C
+    "F": ("achat à la baisse pur", 0.30, lambda: ReglagesSurvie(mult_orange=0.75, mult_rouge=0.5)),
+    "G": ("tendance + achat des creux", 0.30, lambda: ReglagesSurvie(mult_orange=0.75, mult_rouge=0.5)),
 }
+SIGNAUX = {"F": signal_repli, "G": signal_tendance_repli}
 BOTS = ["B", "C", "D", "E"]
 
 
@@ -72,11 +77,12 @@ def lancer(code, prix, t0, t1, cache):
     p = prix[:t1]
     if vol is None:
         return acheter_garder(p, t0=t0)
-    if ("s",) not in cache:
-        cache[("s",)] = signal_vote_mm(prix)
+    cle = ("s", code if code in SIGNAUX else "v2")
+    if cle not in cache:
+        cache[cle] = SIGNAUX.get(code, signal_vote_mm)(prix)
     if ("e", vol) not in cache:
         cache[("e", vol)] = echelle_vol(prix, vol)
-    return executer(p, cache[("s",)][:t1], cache[("e", vol)][:t1], regl(), t0=t0)
+    return executer(p, cache[cle][:t1], cache[("e", vol)][:t1], regl(), t0=t0)
 
 
 def tableau(titre, res):
@@ -101,7 +107,8 @@ def graphe(titre, fichier, dates, prix, res, codes, avec_regression=False):
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 7.5), sharex=True,
                                    gridspec_kw={"height_ratios": [3, 1.3]})
     couleurs = {"A": "#555555", "B": "#1f77b4", "C": "#2ca02c", "D": "#ff7f0e",
-                "E": "#d62728", "R": "#9467bd"}
+                "E": "#d62728", "R": "#9467bd",
+                "F": "#8c564b", "G": "#e377c2"}
     for code in codes:
         r = res[code]
         eq = r["equity"]
