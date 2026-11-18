@@ -184,3 +184,21 @@ def signal_tendance_repli(prix, horizons=(60, 120, 240, 480)):
     out = s.copy()
     out[creux & haussier & ~np.isnan(s)] = 1.0
     return out
+
+
+# ------------------------------------------------------------- ½ Kelly
+def echelle_kelly(prix, signal, mu, fraction=0.5, fenetre=60):
+    """Échelle à passer à executer() pour que la cible s · échelle vaille
+    f = min(1, fraction · μ · s / σ²)  (μ · s = rendement annuel attendu)."""
+    v = np.maximum(vol_realisee(prix, fenetre), 1e-9)
+    f = np.minimum(1.0, fraction * mu * signal / v ** 2)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        e = np.where(signal > 0, f / signal, 0.0)
+    return e
+
+
+def signal_toujours(prix, warmup=480):
+    """Signal constant de 1 (pas de filtre de tendance), après la chauffe."""
+    s = np.ones(len(prix))
+    s[:warmup - 1] = np.nan
+    return s

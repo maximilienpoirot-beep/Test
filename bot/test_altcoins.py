@@ -11,10 +11,14 @@ import matplotlib.dates as mdates
 
 import test_reel as T
 
-CODES = ["A", "B", "C", "D", "E", "R", "F", "G"]
+import sys
+# usage : python test_altcoins.py [fichier_univers] [codes séparés par des virgules] [suffixe des graphes]
+CODES = sys.argv[2].split(",") if len(sys.argv) > 2 else ["A", "B", "C", "D", "E", "R", "F", "G"]
+FICHIER = sys.argv[1] if len(sys.argv) > 1 else "univers_altcoins.txt"
+SUFFIXE = sys.argv[3] if len(sys.argv) > 3 else ""
 DEBUT, FIN = "2020-01-01", "2026-11-19"
 FEN = 2 * 6 * 365                       # fenêtre de robustesse : 2 ans
-UNIVERS = open(os.path.join(T.ICI, "donnees", "univers_altcoins.txt")).read().split()
+UNIVERS = open(os.path.join(T.ICI, "donnees", FICHIER)).read().split()
 
 
 def runs_paire(sym):
@@ -53,7 +57,7 @@ def main():
         f = np.array([tout[s][2][c]["final"] for s in UNIVERS])
         fa = np.array([tout[s][2]["A"]["final"] for s in UNIVERS])
         fc = np.array([tout[s][2]["C"]["final"] for s in UNIVERS])
-        print(f"{c} {T.VARIANTES[c][0]:34s} {np.median(f):9.1f} {np.exp(np.mean(np.log(f))):9.1f} "
+        print(f"{c:2s} {T.VARIANTES[c][0]:33s} {np.median(f):9.1f} {np.exp(np.mean(np.log(f))):9.1f} "
               f"{np.sum(f > fa):3d}/12 {np.sum(f > fc):2d}/12 "
               f"{sum(tout[s][2][c]['mort'] for s in UNIVERS):4d}   "
               f"{100*np.median([tout[s][2][c]['max_dd'] for s in UNIVERS]):8.0f}%")
@@ -65,7 +69,7 @@ def main():
     fc = np.array([r["final"] for r in fenetres["C"]])
     for c in CODES:
         f = np.array([r["final"] for r in fenetres[c]])
-        print(f"{c} {T.VARIANTES[c][0]:34s} {np.median(f):9.1f} {100*np.mean(f > fa):5.0f}% "
+        print(f"{c:2s} {T.VARIANTES[c][0]:33s} {np.median(f):9.1f} {100*np.mean(f > fa):5.0f}% "
               f"{100*np.mean(f > fc):5.0f}% {100*np.mean([r['mort'] for r in fenetres[c]]):5.0f}% "
               f"{100*np.median([r['max_dd'] for r in fenetres[c]]):9.0f}%")
 
@@ -75,10 +79,12 @@ def main():
 
 def graphe_paires(tout):
     fig, axes = plt.subplots(3, 4, figsize=(15, 9.5), sharex=True)
-    coul = {"A": "#555555", "C": "#2ca02c", "G": "#e377c2", "F": "#8c564b"}
+    coul = {"A": "#555555", "C": "#2ca02c", "G": "#e377c2", "F": "#8c564b", "K0": "#17becf",
+            "K1": "#bcbd22", "K2": "#d62728", "K3": "#ff7f0e"}
+    traces = [c for c in CODES if c in coul]
     for ax, sym in zip(axes.flat, UNIVERS):
         d, p, plein = tout[sym]
-        for c in ("A", "C", "G", "F"):
+        for c in traces:
             eq = plein[c]["equity"]
             ax.plot(d[-len(eq):], eq, "--" if c == "A" else "-", color=coul[c], lw=1,
                     label=f"{c} {plein[c]['final']:.0f} €")
@@ -88,10 +94,10 @@ def graphe_paires(tout):
         ax.legend(fontsize=7, loc="upper left")
         ax.grid(alpha=0.3, which="both")
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%y"))
-    fig.suptitle("12 altcoins, 2020 → 11/2026 : A acheter-garder (tirets), C v2 allégée, "
-                 "G tendance + creux, F achat à la baisse (€, échelle log)")
+    fig.suptitle("Altcoins 2020 → 11/2026, total en € (échelle log), A acheter-garder en tirets : "
+                 + ", ".join(f"{c} {T.VARIANTES[c][0]}" for c in traces if c != "A"), fontsize=9)
     fig.tight_layout()
-    fig.savefig(os.path.join(T.SORTIE, "altcoins_courbes.png"), dpi=110)
+    fig.savefig(os.path.join(T.SORTIE, f"altcoins{SUFFIXE}_courbes.png"), dpi=110)
     plt.close(fig)
 
 
@@ -100,7 +106,8 @@ def graphe_regression(fenetres):
     que C encaisse ; a = ce que C gagne quand le marché fait zéro."""
     x = np.log(np.array([r["final"] for r in fenetres["A"]]) / 100)
     fig, ax = plt.subplots(figsize=(8, 6.5))
-    for c, coul in (("C", "#2ca02c"), ("G", "#e377c2")):
+    paires = {"C": "#2ca02c", "G": "#e377c2", "K2": "#d62728", "K3": "#ff7f0e"}
+    for c, coul in [(c, paires[c]) for c in CODES if c in paires][:3]:
         y = np.log(np.array([r["final"] for r in fenetres[c]]) / 100)
         b, a = np.polyfit(x, y, 1)
         r2 = np.corrcoef(x, y)[0, 1] ** 2
@@ -121,7 +128,7 @@ def graphe_regression(fenetres):
     ax.legend(fontsize=8, loc="upper left")
     ax.grid(alpha=0.3)
     fig.tight_layout()
-    fig.savefig(os.path.join(T.SORTIE, "altcoins_regression.png"), dpi=110)
+    fig.savefig(os.path.join(T.SORTIE, f"altcoins{SUFFIXE}_regression.png"), dpi=110)
     plt.close(fig)
 
 

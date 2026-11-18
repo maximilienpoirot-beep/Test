@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
 from strategie import (executer, acheter_garder, signal_vote_mm, echelle_vol,
-                       signal_repli, signal_tendance_repli)
+                       signal_repli, signal_tendance_repli, echelle_kelly, signal_toujours)
 from survie import ReglagesSurvie
 from strategie import reglages_sans_survie
 
@@ -47,7 +47,18 @@ VARIANTES = {      # code: (nom, vol cible, réglages survie) ; None = acheter-g
     "F": ("achat à la baisse pur", 0.30, lambda: ReglagesSurvie(mult_orange=0.75, mult_rouge=0.5)),
     "G": ("tendance + achat des creux", 0.30, lambda: ReglagesSurvie(mult_orange=0.75, mult_rouge=0.5)),
 }
-SIGNAUX = {"F": signal_repli, "G": signal_tendance_repli}
+SIGNAUX = {"F": signal_repli, "G": signal_tendance_repli, "K0": signal_toujours}
+
+# ½ Kelly (protocole_kelly.md) : vol = ("kelly", μ) ; μ estimé par estimer_mu.py sur données déjà vues
+MU1, MU0 = 1.40, 0.64
+_mort_seule = dict(seuil_orange=0.0, seuil_rouge=0.0)
+VARIANTES.update({
+    "K0": ("½ Kelly sans tendance, mort 65 %", ("kelly", MU0), lambda: ReglagesSurvie(**_mort_seule)),
+    "K1": ("½ Kelly tendance, survie allégée", ("kelly", MU1), lambda: ReglagesSurvie(mult_orange=0.75, mult_rouge=0.5)),
+    "K2": ("½ Kelly tendance, mort 65 %", ("kelly", MU1), lambda: ReglagesSurvie(**_mort_seule)),
+    "K3": ("½ Kelly tend., mort, coffre 20 %", ("kelly", MU1), lambda: ReglagesSurvie(part_coffre=0.2, **_mort_seule)),
+    "RK": ("(réf.) ½ Kelly sans survie", ("kelly", MU1), reglages_sans_survie),
+})
 BOTS = ["B", "C", "D", "E"]
 
 
@@ -80,9 +91,11 @@ def lancer(code, prix, t0, t1, cache):
     cle = ("s", code if code in SIGNAUX else "v2")
     if cle not in cache:
         cache[cle] = SIGNAUX.get(code, signal_vote_mm)(prix)
-    if ("e", vol) not in cache:
-        cache[("e", vol)] = echelle_vol(prix, vol)
-    return executer(p, cache[cle][:t1], cache[("e", vol)][:t1], regl(), t0=t0)
+    ce = ("e", vol, cle)
+    if ce not in cache:
+        cache[ce] = (echelle_kelly(prix, cache[cle], vol[1]) if isinstance(vol, tuple)
+                     else echelle_vol(prix, vol))
+    return executer(p, cache[cle][:t1], cache[ce][:t1], regl(), t0=t0)
 
 
 def tableau(titre, res):
@@ -92,7 +105,7 @@ def tableau(titre, res):
         mort = "OUI" if r["mort"] else "non"
         if code == "A" and r["max_dd"] > 0.35:
             mort = "(×)"            # un bot soumis à la règle des 65 % serait mort
-        print(f"{code} {VARIANTES[code][0]:34s} {r['final']:8.1f} {100*r['max_dd']:9.0f}% "
+        print(f"{code:2s} {VARIANTES[code][0]:33s} {r['final']:8.1f} {100*r['max_dd']:9.0f}% "
               f"{r['trades']:7d} {mort:>5s} {r['coffre']:9.1f}")
 
 
@@ -108,7 +121,8 @@ def graphe(titre, fichier, dates, prix, res, codes, avec_regression=False):
                                    gridspec_kw={"height_ratios": [3, 1.3]})
     couleurs = {"A": "#555555", "B": "#1f77b4", "C": "#2ca02c", "D": "#ff7f0e",
                 "E": "#d62728", "R": "#9467bd",
-                "F": "#8c564b", "G": "#e377c2"}
+                "F": "#8c564b", "G": "#e377c2", "K0": "#17becf", "K1": "#bcbd22",
+                "K2": "#d62728", "K3": "#ff7f0e", "RK": "#9467bd"}
     for code in codes:
         r = res[code]
         eq = r["equity"]
